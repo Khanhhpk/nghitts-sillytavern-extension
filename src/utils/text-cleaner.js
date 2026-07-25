@@ -371,9 +371,7 @@ export function cleanTextForTTS(text) {
         .replace(/(?<!\d)-(?!\d)/g, ' ')
         // Remove non-Latin characters (keep basic Latin, Latin Extended, Vietnamese characters, numbers, punctuation, and whitespace)
         // Replaced with a space to prevent words from sticking together (e.g. đó——vậy -> đó vậy)
-        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ')
-        // Collapse multiple spaces into a single space
-        .replace(/\s+/g, ' ');
+        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ');
     return cleanedText.trim();
 }
 
