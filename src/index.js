@@ -203,9 +203,8 @@ async function initUI() {
         $('#nghitts_model').on('change', function() {
             const selectedModel = $(this).val();
             if (selectedModel && selectedModel !== '0') {
-                currentModel = selectedModel;
-                localStorage.setItem('nghitts_last_voice', currentModel);
-                initWorker(currentModel);
+                // Online model dropdown change doesn't trigger worker anymore,
+                // it just selects it for download.
             }
         });
         $('#nghitts_speed').on('input', function() {
@@ -240,16 +239,13 @@ async function initUI() {
         // Initially fetch lists
         await fetchModelsList();
 
-        // Restore last voice from memory and preload
+        // Restore last voice from memory before refreshing the local list
         const lastVoice = localStorage.getItem('nghitts_last_voice');
         if (lastVoice) {
-            // Ensure the last voice is still in the list
-            const $modelDropdown = $('#nghitts_model');
-            if ($modelDropdown.find(`option[value="${lastVoice}"]`).length > 0) {
-                $modelDropdown.val(lastVoice).trigger('change');
-            }
+            currentModel = lastVoice;
         }
-        refreshCachedVoicesList();
+
+        await refreshCachedVoicesList();
         
         if (typeof toastr !== 'undefined') {
             toastr.success('NghiTTS Extension Loaded!');
@@ -389,17 +385,16 @@ async function refreshCachedVoicesList() {
 function onVoiceDropdownChange() {
     const selectedVoice = $('#nghitts_voice').val();
     if (!selectedVoice) {
-        if (worker) {
-            worker.terminate();
-            worker = null;
-        }
+        workerPool.terminateAll();
         currentModel = '';
+        localStorage.removeItem('nghitts_last_voice');
         return;
     }
     
-    if (currentModel !== selectedVoice) {
+    if (currentModel !== selectedVoice || workerPool.workers.length === 0) {
         currentModel = selectedVoice;
-        console.log(`[NghiTTS] Loading voice (model): ${currentModel}`);
+        localStorage.setItem('nghitts_last_voice', currentModel);
+        console.log(`[NghiTTS] Loading local voice: ${currentModel}`);
         initWorker(currentModel);
     }
 }

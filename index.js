@@ -124,7 +124,6 @@ var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    m
 
 // src/index.js
 console.log("[NghiTTS] Extension module loading...");
-var worker = null;
 var voicesList = [];
 var modelsList = [];
 var currentModel = "";
@@ -224,13 +223,13 @@ var WorkerPool = class {
     this.terminateAll();
     for (let i = 0; i < this.poolSize; i++) {
       const workerUrl = import.meta.url.replace("index.js", "worker.js");
-      const worker2 = new Worker(workerUrl, { type: "module" });
-      worker2.postMessage({
+      const worker = new Worker(workerUrl, { type: "module" });
+      worker.postMessage({
         type: "init",
         model: modelName,
         baseUrl: NGHITTS_API
       });
-      worker2.onmessage = (e) => {
+      worker.onmessage = (e) => {
         const { status, voices, chunk, data, taskId } = e.data;
         if (status === "ready") {
           if (i === 0) {
@@ -255,12 +254,12 @@ var WorkerPool = class {
           }
         }
       };
-      this.workers.push(worker2);
+      this.workers.push(worker);
     }
   }
   terminateAll() {
-    for (const worker2 of this.workers) {
-      worker2.terminate();
+    for (const worker of this.workers) {
+      worker.terminate();
     }
     this.workers = [];
     for (const [taskId, task] of pendingTasks.entries()) {
@@ -270,9 +269,9 @@ var WorkerPool = class {
   }
   dispatch(message) {
     if (this.workers.length === 0) return;
-    const worker2 = this.workers[this.currentWorkerIdx];
+    const worker = this.workers[this.currentWorkerIdx];
     this.currentWorkerIdx = (this.currentWorkerIdx + 1) % this.poolSize;
-    worker2.postMessage(message);
+    worker.postMessage(message);
   }
 };
 var workerPool = new WorkerPool();
@@ -297,9 +296,6 @@ async function initUI() {
     $("#nghitts_model").on("change", function() {
       const selectedModel = $(this).val();
       if (selectedModel && selectedModel !== "0") {
-        currentModel = selectedModel;
-        localStorage.setItem("nghitts_last_voice", currentModel);
-        initWorker(currentModel);
       }
     });
     $("#nghitts_speed").on("input", function() {
@@ -330,12 +326,9 @@ async function initUI() {
     await fetchModelsList();
     const lastVoice = localStorage.getItem("nghitts_last_voice");
     if (lastVoice) {
-      const $modelDropdown = $("#nghitts_model");
-      if ($modelDropdown.find(`option[value="${lastVoice}"]`).length > 0) {
-        $modelDropdown.val(lastVoice).trigger("change");
-      }
+      currentModel = lastVoice;
     }
-    refreshCachedVoicesList();
+    await refreshCachedVoicesList();
     if (typeof toastr !== "undefined") {
       toastr.success("NghiTTS Extension Loaded!");
     }
@@ -444,16 +437,15 @@ async function refreshCachedVoicesList() {
 function onVoiceDropdownChange() {
   const selectedVoice = $("#nghitts_voice").val();
   if (!selectedVoice) {
-    if (worker) {
-      worker.terminate();
-      worker = null;
-    }
+    workerPool.terminateAll();
     currentModel = "";
+    localStorage.removeItem("nghitts_last_voice");
     return;
   }
-  if (currentModel !== selectedVoice) {
+  if (currentModel !== selectedVoice || workerPool.workers.length === 0) {
     currentModel = selectedVoice;
-    console.log(`[NghiTTS] Loading voice (model): ${currentModel}`);
+    localStorage.setItem("nghitts_last_voice", currentModel);
+    console.log(`[NghiTTS] Loading local voice: ${currentModel}`);
     initWorker(currentModel);
   }
 }
