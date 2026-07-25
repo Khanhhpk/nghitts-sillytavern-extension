@@ -1675,7 +1675,7 @@ async function chunkText(text) {
 }
 
 // src/index.html
-var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_workers" style="width: 60px;" title="S\u1ED1 worker ch\u1EA1y song song (1-8). T\u0103ng gi\xFAp x\u1EED l\xFD nhanh h\u01A1n nh\u01B0ng t\u1ED1n nhi\u1EC1u RAM.">Workers:</label>\n                <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">\n                <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(S\u1ED1 lu\u1ED3ng song song)</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px; gap: 10px;">\n                    <button id="nghitts_stop_test_btn" class="menu_button" style="display: none; background-color: var(--smartThemeDangerColor, #d9534f); color: white;">Stop TTS</button>\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
+var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_workers" style="width: 60px;" title="S\u1ED1 worker ch\u1EA1y song song (1-8). T\u0103ng gi\xFAp x\u1EED l\xFD nhanh h\u01A1n nh\u01B0ng t\u1ED1n nhi\u1EC1u RAM.">Workers:</label>\n                <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">\n                <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(S\u1ED1 lu\u1ED3ng song song)</span>\n            </div>\n            \n            <div id="nghitts_worker_status_container" style="margin-top: 10px; font-size: 0.85em; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; border: 1px solid var(--SmartThemeBorderColor);">\n                <div style="font-weight: bold; margin-bottom: 5px; color: var(--grey_text);">Worker Status:</div>\n                <div id="nghitts_worker_list" style="display: flex; flex-direction: column; gap: 4px;">\n                    <!-- Worker status will be injected here -->\n                    <div style="color: var(--grey_text); font-style: italic;">Ch\u01B0a kh\u1EDFi t\u1EA1o</div>\n                </div>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px; gap: 10px;">\n                    <button id="nghitts_stop_test_btn" class="menu_button" style="display: none; background-color: var(--smartThemeDangerColor, #d9534f); color: white;">Stop TTS</button>\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
 
 // src/style.css
 var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
@@ -1807,6 +1807,29 @@ var AudioStreamer = class {
   }
 };
 var audioStreamer = new AudioStreamer();
+function updateWorkerStatusUI() {
+  const $list = $("#nghitts_worker_list");
+  if ($list.length === 0) return;
+  if (!workerPool || workerPool.workers.length === 0) {
+    $list.html('<div style="color: var(--grey_text); font-style: italic;">Ch\u01B0a kh\u1EDFi t\u1EA1o (Ch\u1EDD model)</div>');
+    return;
+  }
+  let html = "";
+  workerPool.workers.forEach((worker, i) => {
+    let color = "var(--grey_text)";
+    if (worker.nghiState === "Ready (R\u1EA3nh)") color = "#4CAF50";
+    else if (worker.nghiState === "\u0110ang \u0111\u1ECDc...") color = "#2196F3";
+    else if (worker.nghiState === "L\u1ED7i") color = "#f44336";
+    else if (worker.nghiState === "Kh\u1EDFi t\u1EA1o...") color = "#FF9800";
+    html += `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;">
+                <span>Worker #${i + 1}</span>
+                <span style="color: ${color}; font-weight: bold; font-size: 0.9em;">${worker.nghiState}</span>
+            </div>
+        `;
+  });
+  $list.html(html);
+}
 var WorkerPool = class {
   constructor() {
     this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 2;
@@ -1835,14 +1858,19 @@ var WorkerPool = class {
         model: modelName,
         baseUrl: NGHITTS_API
       });
+      worker.nghiState = "Kh\u1EDFi t\u1EA1o...";
       worker.onmessage = (e) => {
         const { status, voices, chunk, data, taskId, sequenceId } = e.data;
         if (status === "ready") {
+          worker.nghiState = "Ready (R\u1EA3nh)";
+          updateWorkerStatusUI();
           if (i === 0) {
             voicesList = voices || [];
             updateVoicesDropdown();
           }
         } else if (status === "error") {
+          worker.nghiState = "L\u1ED7i";
+          updateWorkerStatusUI();
           console.error(`NghiTTS Worker ${i} Error:`, data);
           if (taskId && pendingTasks.has(taskId)) {
             pendingTasks.get(taskId).reject(new Error(data));
@@ -1852,10 +1880,14 @@ var WorkerPool = class {
             }
           }
         } else if (status === "complete") {
+          worker.nghiState = "Ready (R\u1EA3nh)";
+          updateWorkerStatusUI();
           if (taskId && pendingTasks.has(taskId)) {
             audioStreamer.markChunkComplete(taskId, sequenceId);
           }
         } else if (status === "stream" && chunk) {
+          worker.nghiState = "\u0110ang \u0111\u1ECDc...";
+          updateWorkerStatusUI();
           if (taskId && pendingTasks.has(taskId)) {
             audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate);
           }
@@ -1873,11 +1905,14 @@ var WorkerPool = class {
       task.reject(new Error("Worker terminated"));
     }
     pendingTasks.clear();
+    updateWorkerStatusUI();
   }
   dispatch(message) {
     if (this.workers.length === 0) return;
     const worker = this.workers[this.currentWorkerIdx];
     this.currentWorkerIdx = (this.currentWorkerIdx + 1) % this.poolSize;
+    worker.nghiState = "\u0110ang \u0111\u1ECDc...";
+    updateWorkerStatusUI();
     worker.postMessage(message);
   }
 };

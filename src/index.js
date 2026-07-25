@@ -160,6 +160,33 @@ class AudioStreamer {
 
 const audioStreamer = new AudioStreamer();
 
+function updateWorkerStatusUI() {
+    const $list = $('#nghitts_worker_list');
+    if ($list.length === 0) return;
+    
+    if (!workerPool || workerPool.workers.length === 0) {
+        $list.html('<div style="color: var(--grey_text); font-style: italic;">Chưa khởi tạo (Chờ model)</div>');
+        return;
+    }
+    
+    let html = '';
+    workerPool.workers.forEach((worker, i) => {
+        let color = 'var(--grey_text)';
+        if (worker.nghiState === 'Ready (Rảnh)') color = '#4CAF50'; // Green
+        else if (worker.nghiState === 'Đang đọc...') color = '#2196F3'; // Blue
+        else if (worker.nghiState === 'Lỗi') color = '#f44336'; // Red
+        else if (worker.nghiState === 'Khởi tạo...') color = '#FF9800'; // Orange
+        
+        html += `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;">
+                <span>Worker #${i + 1}</span>
+                <span style="color: ${color}; font-weight: bold; font-size: 0.9em;">${worker.nghiState}</span>
+            </div>
+        `;
+    });
+    $list.html(html);
+}
+
 class WorkerPool {
     constructor() {
         this.poolSize = parseInt(localStorage.getItem('nghitts_worker_pool_size')) || 2;
@@ -192,14 +219,21 @@ class WorkerPool {
                 baseUrl: NGHITTS_API
             });
             
+            worker.nghiState = 'Khởi tạo...';
             worker.onmessage = (e) => {
                 const { status, voices, chunk, data, taskId, sequenceId } = e.data;
                 if (status === 'ready') {
+                    worker.nghiState = 'Ready (Rảnh)';
+                    updateWorkerStatusUI();
+                    
                     if (i === 0) { // Only update UI from the first worker
                         voicesList = voices || [];
                         updateVoicesDropdown();
                     }
                 } else if (status === 'error') {
+                    worker.nghiState = 'Lỗi';
+                    updateWorkerStatusUI();
+                    
                     console.error(`NghiTTS Worker ${i} Error:`, data);
                     if (taskId && pendingTasks.has(taskId)) {
                         pendingTasks.get(taskId).reject(new Error(data));
@@ -209,10 +243,16 @@ class WorkerPool {
                         }
                     }
                 } else if (status === 'complete') {
+                    worker.nghiState = 'Ready (Rảnh)';
+                    updateWorkerStatusUI();
+                    
                     if (taskId && pendingTasks.has(taskId)) {
                         audioStreamer.markChunkComplete(taskId, sequenceId);
                     }
                 } else if (status === 'stream' && chunk) {
+                    worker.nghiState = 'Đang đọc...';
+                    updateWorkerStatusUI();
+                    
                     if (taskId && pendingTasks.has(taskId)) {
                         audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate);
                     }
@@ -232,12 +272,17 @@ class WorkerPool {
             task.reject(new Error("Worker terminated"));
         }
         pendingTasks.clear();
+        updateWorkerStatusUI();
     }
 
     dispatch(message) {
         if (this.workers.length === 0) return;
         const worker = this.workers[this.currentWorkerIdx];
         this.currentWorkerIdx = (this.currentWorkerIdx + 1) % this.poolSize;
+        
+        worker.nghiState = 'Đang đọc...';
+        updateWorkerStatusUI();
+        
         worker.postMessage(message);
     }
 }

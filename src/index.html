@@ -34,6 +34,14 @@
                 <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">
                 <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(Số luồng song song)</span>
             </div>
+            
+            <div id="nghitts_worker_status_container" style="margin-top: 10px; font-size: 0.85em; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; border: 1px solid var(--SmartThemeBorderColor);">
+                <div style="font-weight: bold; margin-bottom: 5px; color: var(--grey_text);">Worker Status:</div>
+                <div id="nghitts_worker_list" style="display: flex; flex-direction: column; gap: 4px;">
+                    <!-- Worker status will be injected here -->
+                    <div style="color: var(--grey_text); font-style: italic;">Chưa khởi tạo</div>
+                </div>
+            </div>
 
             <hr>
             
