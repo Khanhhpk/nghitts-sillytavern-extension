@@ -361,17 +361,25 @@ export function cleanTextForTTS(text) {
     // This regex covers most common emoji ranges
     const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|[\u{FE0F}]|[\u{200D}]/gu;
 
-    const cleanedText = text.replace(emojiRegex, '')
-        //.replace(/\b\/\b/, ' slash ')
-        .replace(/[\\()¯]/g, '')
-        .replace(/["""]/g, '')
-        .replace(/\s—/g, '.')
-        .replace(/\b_\b/g, ' ')
-        // Remove dashes but preserve those between numbers (for date ranges like 25-26, year ranges like 1873-1907)
+    const cleanedText = text.replace(emojiRegex, ' ')
+        // Parentheses become commas for a natural reading pause
+        .replace(/[()]/g, ', ')
+        // Remove backslash and macron, replace with space
+        .replace(/[\\¯]/g, ' ')
+        // Remove all types of quotes, replace with space
+        .replace(/["“”'‘’]/g, ' ')
+        // Convert em dashes to commas for natural pauses if they weren't configured in custom pauses
+        .replace(/—+/g, ', ')
+        // Remove underscores
+        .replace(/_/g, ' ')
+        // Remove standard dashes but preserve those between numbers (for date ranges like 25-26, year ranges like 1873-1907)
         .replace(/(?<!\d)-(?!\d)/g, ' ')
         // Remove non-Latin characters (keep basic Latin, Latin Extended, Vietnamese characters, numbers, punctuation, and whitespace)
         // Replaced with a space to prevent words from sticking together (e.g. đó——vậy -> đó vậy)
-        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ');
+        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ')
+        // Clean up redundant commas and spaces created by the replacements
+        .replace(/\s*,\s*(,\s*)+/g, ', ')
+        .replace(/\s+/g, ' ');
     return cleanedText.trim();
 }
 
