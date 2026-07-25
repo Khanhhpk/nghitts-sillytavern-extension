@@ -545,6 +545,9 @@ jQuery(async () => {
     console.log("[NghiTTS] Extension initializing...");
     await initUI();
     
+    // Inject dedicated UI buttons into ST chat and input bar
+    injectDedicatedUI();
+    
     try {
         const ttsModule = await import('../../tts/index.js');
         if (ttsModule && ttsModule.registerTTSProvider) {
@@ -556,3 +559,133 @@ jQuery(async () => {
         window.NghiTTS = { generate: generateTTS };
     }
 });
+
+// -----------------------------------------------------------------------
+// Dedicated UI Injection (Standalone Buttons)
+// -----------------------------------------------------------------------
+let currentPlayingBtn = null;
+
+async function playTextWithNghiTTS(text, $btn) {
+    // If this button is already playing, stop it
+    if (currentPlayingBtn === $btn[0] && (audioStreamer.isPlaying || audioStreamer.isGenerating)) {
+        audioStreamer.stop();
+        resetBtnState($btn);
+        return;
+    }
+    
+    // Stop any current audio
+    audioStreamer.stop();
+    if (currentPlayingBtn) {
+        resetBtnState($(currentPlayingBtn));
+    }
+    
+    currentPlayingBtn = $btn[0];
+    
+    // Visual feedback: Loading/Playing
+    $btn.find('i').removeClass('fa-volume-high').addClass('fa-circle-stop');
+    $btn.css('color', '#4CAF50'); // green to indicate active
+    
+    const voiceId = $('#nghitts_voice').val();
+    
+    try {
+        await new Promise((resolve, reject) => {
+            generateTTS(text, voiceId, resolve, reject);
+        });
+    } catch (e) {
+        console.error("NghiTTS Play Error:", e);
+    } finally {
+        if (currentPlayingBtn === $btn[0]) {
+            resetBtnState($btn);
+            currentPlayingBtn = null;
+        }
+    }
+}
+
+function resetBtnState($btn) {
+    $btn.find('i').removeClass('fa-circle-stop').addClass('fa-volume-high');
+    $btn.css('color', '');
+}
+
+function addPlayButtonToMessage(mesElement) {
+    const $mes = $(mesElement);
+    if ($mes.find('.nghitts-play-btn').length > 0) return;
+    
+    const $btn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: Đọc tin nhắn này" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
+    
+    $btn.on('mouseenter', () => $btn.css('opacity', '1'));
+    $btn.on('mouseleave', () => $btn.css('opacity', '0.6'));
+    
+    $btn.on('click', function(e) {
+        e.stopPropagation();
+        const text = $mes.find('.mes_text').text();
+        playTextWithNghiTTS(text, $btn);
+    });
+    
+    const $buttons = $mes.find('.mes_buttons');
+    if ($buttons.length > 0) {
+        $buttons.prepend($btn);
+    } else {
+        $btn.css({ position: 'absolute', right: '10px', top: '10px' });
+        $mes.append($btn);
+    }
+}
+
+function injectDedicatedUI() {
+    // 1. Inject into existing messages
+    $('.mes:not(:has(.nghitts-play-btn))').each(function() {
+        addPlayButtonToMessage(this);
+    });
+    
+    // 2. Observe new messages
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === 1) {
+                    const $node = $(node);
+                    if ($node.hasClass('mes')) {
+                        addPlayButtonToMessage(node);
+                    } else {
+                        $node.find('.mes').each(function() {
+                            addPlayButtonToMessage(this);
+                        });
+                    }
+                }
+            });
+        });
+    });
+    
+    const chatElement = document.getElementById('chat');
+    if (chatElement) {
+        observer.observe(chatElement, { childList: true, subtree: true });
+    }
+    
+    // 3. Inject Quick Play into input bar
+    const checkInterval = setInterval(() => {
+        const $sendControls = $('#send_controls');
+        const $sendForm = $('#send_form');
+        const $target = $sendControls.length > 0 ? $sendControls : $sendForm;
+        
+        if ($target.length > 0 && $('#nghitts_quick_play').length === 0) {
+            const $btn = $('<div id="nghitts_quick_play" title="NghiTTS: Đọc tin nhắn mới nhất" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+            
+            $btn.on('mouseenter', () => $btn.css('opacity', '1'));
+            $btn.on('mouseleave', () => $btn.css('opacity', '0.7'));
+            
+            $btn.on('click', (e) => {
+                e.stopPropagation();
+                // Find last message text (exclude swipes/hidden)
+                const $lastMes = $('.mes:visible .mes_text').last();
+                if ($lastMes.length > 0) {
+                    playTextWithNghiTTS($lastMes.text(), $btn);
+                }
+            });
+            
+            if ($('#send_but').length > 0) {
+                $btn.insertBefore('#send_but');
+            } else {
+                $target.append($btn);
+            }
+            clearInterval(checkInterval);
+        }
+    }, 1000);
+}
