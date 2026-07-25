@@ -130,40 +130,144 @@ var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
 var pendingTasks = /* @__PURE__ */ new Map();
-var currentAudio = null;
-var currentAudioResolve = null;
-function playAudioWithOverlapPrevention(audioUrl) {
-  return new Promise((resolve) => {
-    if (currentAudio) {
-      currentAudio.pause();
-      if (currentAudioResolve) {
-        currentAudioResolve();
+var AudioStreamer = class {
+  constructor() {
+    this.audioContext = null;
+    this.nextStartTime = 0;
+    this.isPlaying = false;
+    this.resolvePromise = null;
+    this.sourceNodes = [];
+  }
+  startNewSession(resolve) {
+    this.stop();
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this.audioContext.state === "suspended") {
+      this.audioContext.resume();
+    }
+    this.nextStartTime = this.audioContext.currentTime + 0.05;
+    this.isPlaying = true;
+    this.resolvePromise = resolve;
+    this.sourceNodes = [];
+  }
+  queueFloat32Array(audioData, sampleRate) {
+    if (!this.isPlaying || !this.audioContext) return;
+    const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
+    audioBuffer.getChannelData(0).set(audioData);
+    const source = this.audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this.audioContext.destination);
+    const scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+    source.start(scheduleTime);
+    this.sourceNodes.push(source);
+    this.nextStartTime = scheduleTime + audioBuffer.duration;
+    source.onended = () => {
+      const idx = this.sourceNodes.indexOf(source);
+      if (idx !== -1) {
+        this.sourceNodes.splice(idx, 1);
+      }
+    };
+  }
+  markComplete() {
+    if (!this.isPlaying) return;
+    const remainingTime = this.nextStartTime - this.audioContext.currentTime;
+    if (remainingTime > 0) {
+      setTimeout(() => {
+        if (this.isPlaying && this.resolvePromise) {
+          this.resolvePromise();
+          this.resolvePromise = null;
+          this.isPlaying = false;
+        }
+      }, remainingTime * 1e3);
+    } else {
+      if (this.resolvePromise) this.resolvePromise();
+      this.resolvePromise = null;
+      this.isPlaying = false;
+    }
+  }
+  stop() {
+    this.isPlaying = false;
+    for (const source of this.sourceNodes) {
+      try {
+        source.stop();
+      } catch (e) {
       }
     }
-    currentAudio = new Audio(audioUrl);
-    currentAudioResolve = resolve;
-    currentAudio.onended = () => {
-      URL.revokeObjectURL(audioUrl);
-      if (currentAudioResolve === resolve) {
-        currentAudio = null;
-        currentAudioResolve = null;
-      }
-      resolve();
-    };
-    currentAudio.onerror = () => {
-      console.error("Audio playback error");
-      resolve();
-    };
-    currentAudio.play().catch((e) => {
-      console.error("Audio play failed:", e);
-      resolve();
-    });
-  });
-}
+    this.sourceNodes = [];
+    if (this.resolvePromise) {
+      this.resolvePromise();
+      this.resolvePromise = null;
+    }
+  }
+};
+var audioStreamer = new AudioStreamer();
+var WorkerPool = class {
+  constructor(poolSize = 2) {
+    this.poolSize = poolSize;
+    this.workers = [];
+    this.currentWorkerIdx = 0;
+  }
+  init(modelName) {
+    this.terminateAll();
+    for (let i = 0; i < this.poolSize; i++) {
+      const workerUrl = import.meta.url.replace("index.js", "worker.js");
+      const worker2 = new Worker(workerUrl, { type: "module" });
+      worker2.postMessage({
+        type: "init",
+        model: modelName,
+        baseUrl: NGHITTS_API
+      });
+      worker2.onmessage = (e) => {
+        const { status, voices, chunk, data, taskId } = e.data;
+        if (status === "ready") {
+          if (i === 0) {
+            voicesList = voices || [];
+            updateVoicesDropdown();
+          }
+        } else if (status === "error") {
+          console.error(`NghiTTS Worker ${i} Error:`, data);
+          if (taskId && pendingTasks.has(taskId)) {
+            pendingTasks.get(taskId).reject(new Error(data));
+            pendingTasks.delete(taskId);
+          }
+        } else if (status === "complete") {
+          if (taskId && pendingTasks.has(taskId)) {
+            pendingTasks.get(taskId).resolve();
+            pendingTasks.delete(taskId);
+            audioStreamer.markComplete();
+          }
+        } else if (status === "stream" && chunk) {
+          if (taskId && pendingTasks.has(taskId)) {
+            audioStreamer.queueFloat32Array(chunk.audio, chunk.sampleRate);
+          }
+        }
+      };
+      this.workers.push(worker2);
+    }
+  }
+  terminateAll() {
+    for (const worker2 of this.workers) {
+      worker2.terminate();
+    }
+    this.workers = [];
+    for (const [taskId, task] of pendingTasks.entries()) {
+      task.reject(new Error("Worker terminated"));
+    }
+    pendingTasks.clear();
+  }
+  dispatch(message) {
+    if (this.workers.length === 0) return;
+    const worker2 = this.workers[this.currentWorkerIdx];
+    this.currentWorkerIdx = (this.currentWorkerIdx + 1) % this.poolSize;
+    worker2.postMessage(message);
+  }
+};
+var workerPool = new WorkerPool(2);
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
   console.log("[NghiTTS] Initializing UI...");
-  function injectUI() {
+  async function injectUI() {
     const container = document.getElementById("extensions_settings");
     if (!container) {
       console.log("NghiTTS: Waiting for #extensions_settings...");
@@ -178,34 +282,38 @@ async function initUI() {
     $("#nghitts_model").on("change", onModelDropdownChange);
     $("#nghitts_download_btn").on("click", downloadSelectedModel);
     $("#nghitts_voice").on("change", onVoiceDropdownChange);
-    $("#nghitts_speed").on("input", function() {
-      currentSpeed = parseFloat($(this).val());
-      $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
+    $("#nghitts_model").on("change", function() {
+      const selectedModel = $(this).val();
+      if (selectedModel && selectedModel !== "0") {
+        currentModel = selectedModel;
+        localStorage.setItem("nghitts_last_voice", currentModel);
+        initWorker(currentModel);
+      }
     });
     $("#nghitts_test_btn").on("click", async function() {
-      const text = $("#nghitts_test_text").val().trim();
-      const voiceId = 0;
-      if (!text) {
-        toastr?.info("Vui l\xF2ng nh\u1EADp v\u0103n b\u1EA3n \u0111\u1EC3 test.");
-        return;
-      }
-      if (!currentModel) {
-        toastr?.error("Ch\u01B0a t\u1EA3i ho\u1EB7c ch\u01B0a ch\u1ECDn Voice.");
-        return;
-      }
+      const text = $("#nghitts_test_text").val() || "Xin ch\xE0o, \u0111\xE2y l\xE0 gi\u1ECDng n\xF3i t\u1EEB Nghi TTS.";
+      const voiceId = $("#nghitts_voice").val();
       const $btn = $(this);
       $btn.prop("disabled", true).text("Generating...");
       try {
-        const audioUrl = await generateTTS(text, voiceId);
-        $btn.text("Playing...");
-        await playAudioWithOverlapPrevention(audioUrl);
+        await new Promise((resolve, reject) => {
+          audioStreamer.startNewSession(resolve);
+          generateTTS(text, voiceId, resolve, reject);
+        });
       } catch (e) {
         console.error("Test TTS Error:", e);
       } finally {
         $btn.prop("disabled", false).text("Test Audio");
       }
     });
-    fetchModelsList();
+    await fetchModelsList();
+    const lastVoice = localStorage.getItem("nghitts_last_voice");
+    if (lastVoice) {
+      const $modelDropdown = $("#nghitts_model");
+      if ($modelDropdown.find(`option[value="${lastVoice}"]`).length > 0) {
+        $modelDropdown.val(lastVoice).trigger("change");
+      }
+    }
     refreshCachedVoicesList();
     if (typeof toastr !== "undefined") {
       toastr.success("NghiTTS Extension Loaded!");
@@ -284,41 +392,7 @@ async function downloadSelectedModel() {
   }
 }
 function initWorker(modelName) {
-  if (worker) {
-    worker.terminate();
-    worker = null;
-    for (const [taskId, task] of pendingTasks.entries()) {
-      task.reject(new Error("Worker terminated before completion"));
-    }
-    pendingTasks.clear();
-  }
-  const workerUrl = import.meta.url.replace("index.js", "worker.js");
-  worker = new Worker(workerUrl, { type: "module" });
-  worker.postMessage({
-    type: "init",
-    model: modelName,
-    baseUrl: NGHITTS_API
-  });
-  worker.onmessage = (e) => {
-    const { status, voices, audio, chunk, data, taskId } = e.data;
-    if (status === "ready") {
-      voicesList = voices || [];
-      updateVoicesDropdown();
-    } else if (status === "error") {
-      console.error("NghiTTS Worker Error:", data);
-      if (taskId && pendingTasks.has(taskId)) {
-        pendingTasks.get(taskId).reject(new Error(data));
-        pendingTasks.delete(taskId);
-      }
-    } else if (status === "complete" && audio) {
-      if (taskId && pendingTasks.has(taskId)) {
-        const url = URL.createObjectURL(audio);
-        pendingTasks.get(taskId).resolve(url);
-        pendingTasks.delete(taskId);
-      }
-    } else if (status === "stream" && chunk) {
-    }
-  };
+  workerPool.init(modelName);
 }
 function updateVoicesDropdown() {
   console.log(`[NghiTTS] Model loaded. Found ${voicesList.length} internal voices.`);
@@ -362,21 +436,20 @@ function onVoiceDropdownChange() {
     initWorker(currentModel);
   }
 }
-async function generateTTS(text, voiceId) {
-  return new Promise((resolve, reject) => {
-    if (!worker) {
-      toastr?.error("NghiTTS model not loaded or cached.");
-      return reject(new Error("Model not loaded"));
-    }
-    const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
-    pendingTasks.set(taskId, { resolve, reject });
-    worker.postMessage({
-      type: "generate",
-      text,
-      voice: voiceId,
-      speed: currentSpeed,
-      taskId
-    });
+function generateTTS(text, voiceId, resolve, reject) {
+  if (workerPool.workers.length === 0) {
+    toastr?.error("NghiTTS model not loaded or cached.");
+    reject(new Error("Model not loaded"));
+    return;
+  }
+  const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
+  pendingTasks.set(taskId, { resolve, reject });
+  workerPool.dispatch({
+    type: "generate",
+    text,
+    voice: voiceId,
+    speed: currentSpeed,
+    taskId
   });
 }
 var providerInfo = {
@@ -388,18 +461,13 @@ var providerInfo = {
     return [{ id: 0, name: currentModel }];
   },
   fetchTtsGeneration: async (text, voiceId) => {
-    const audioUrl = await generateTTS(text, 0);
-    await playAudioWithOverlapPrevention(audioUrl);
+    return new Promise((resolve, reject) => {
+      audioStreamer.startNewSession(resolve);
+      generateTTS(text, 0, resolve, reject);
+    });
   },
   onStopTts: () => {
-    if (currentAudio) {
-      currentAudio.pause();
-      if (currentAudioResolve) {
-        currentAudioResolve();
-      }
-      currentAudio = null;
-      currentAudioResolve = null;
-    }
+    audioStreamer.stop();
   }
 };
 jQuery(async () => {

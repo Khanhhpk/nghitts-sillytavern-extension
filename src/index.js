@@ -168,7 +168,7 @@ const NGHITTS_API = 'https://nghitts.app/api';
 async function initUI() {
     console.log("[NghiTTS] Initializing UI...");
     
-    function injectUI() {
+    async function injectUI() {
         const container = document.getElementById('extensions_settings');
         if (!container) {
             console.log("NghiTTS: Waiting for #extensions_settings...");
