@@ -2122,8 +2122,8 @@ jQuery(async () => {
   injectDedicatedUI();
   try {
     const ttsModule = await import("../tts/index.js");
-    if (ttsModule && ttsModule.registerTTSProvider) {
-      ttsModule.registerTTSProvider("nghitts", providerInfo);
+    if (ttsModule && ttsModule.registerTtsProvider) {
+      ttsModule.registerTtsProvider("nghitts", providerInfo);
       console.log("[NghiTTS] Registered with ST TTS subsystem");
     }
   } catch (e) {
