@@ -17,6 +17,7 @@ class AudioStreamer {
         this.audioContext = null;
         this.nextStartTime = 0;
         this.isPlaying = false;
+        this.isGenerating = false;
         this.resolvePromise = null;
         this.sourceNodes = [];
         this.currentTaskId = null;
@@ -32,6 +33,7 @@ class AudioStreamer {
         }
         this.nextStartTime = this.audioContext.currentTime + 0.05; // 50ms buffer
         this.isPlaying = true;
+        this.isGenerating = true;
         this.resolvePromise = resolve;
         this.sourceNodes = [];
         this.currentTaskId = taskId;
@@ -58,29 +60,29 @@ class AudioStreamer {
             if (idx !== -1) {
                 this.sourceNodes.splice(idx, 1);
             }
+            this.checkCompletion();
         };
+    }
+
+    checkCompletion() {
+        if (!this.isGenerating && this.sourceNodes.length === 0 && this.isPlaying) {
+            this.isPlaying = false;
+            if (this.resolvePromise) {
+                this.resolvePromise();
+                this.resolvePromise = null;
+            }
+        }
     }
 
     markComplete() {
         if (!this.isPlaying) return;
-        const remainingTime = this.nextStartTime - this.audioContext.currentTime;
-        if (remainingTime > 0) {
-            setTimeout(() => {
-                if (this.isPlaying && this.resolvePromise) {
-                    this.resolvePromise();
-                    this.resolvePromise = null;
-                    this.isPlaying = false;
-                }
-            }, remainingTime * 1000);
-        } else {
-            if (this.resolvePromise) this.resolvePromise();
-            this.resolvePromise = null;
-            this.isPlaying = false;
-        }
+        this.isGenerating = false;
+        this.checkCompletion();
     }
 
     stop() {
         this.isPlaying = false;
+        this.isGenerating = false;
         for (const source of this.sourceNodes) {
             try {
                 source.stop();

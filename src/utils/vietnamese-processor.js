@@ -937,6 +937,9 @@ function normalizePunctuation(text) {
     text = text.replace(/[""„‟]/g, '"');
     text = text.replace(/[''‚‛]/g, "'");
     
+    // Normalize whitespace but PRESERVE newlines (\n)
+    text = text.replace(/[ \t\r\f\v]+/g, ' ');
+    
     // Normalize dashes
     text = text.replace(/[–—−]/g, '-');
     
@@ -954,7 +957,6 @@ function normalizePunctuation(text) {
  * Clean up extra whitespace
  */
 function cleanWhitespace(text) {
-    text = text.replace(/\s+/g, ' ');
     return text.trim();
 }
 
