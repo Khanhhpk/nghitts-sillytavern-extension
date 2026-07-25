@@ -2360,7 +2360,10 @@ jQuery(async () => {
   console.log("[NghiTTS] Extension initializing...");
   await initUI();
   injectDedicatedUI();
-  window.NghiTTS = { generate: generateTTS };
+  window.NghiTTS = {
+    generate: generateTTS,
+    stop: () => audioStreamer.stop()
+  };
 });
 var currentPlayingText = null;
 async function playTextWithNghiTTS(text) {

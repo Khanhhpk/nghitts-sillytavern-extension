@@ -163,7 +163,9 @@ export class PiperTTS {
       const { cachedFetch } = await import('../utils/model-cache.js');
       
       // Use JSDelivr for WASM files since we are inside a client extension
+      // Set WebAssembly options to optimize RAM
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+      ort.env.wasm.numThreads = 1;
 
       // Load model and config
       const [modelResponse, configResponse] = await Promise.all([
