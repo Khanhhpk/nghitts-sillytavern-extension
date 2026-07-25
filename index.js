@@ -94,6 +94,12 @@ async function checkModelInCache(url) {
   return await globalCache.checkExists(url);
 }
 
+// src/index.html
+var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Voice (Speaker):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
+
+// src/style.css
+var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
+
 // src/index.js
 var worker = null;
 var voicesList = [];
@@ -102,11 +108,9 @@ var currentModel = "";
 var currentSpeed = 1;
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
-  const htmlResponse = await fetch(import.meta.url.replace("index.js", "index.html"));
-  const html = await htmlResponse.text();
-  const cssUrl = import.meta.url.replace("index.js", "style.css");
-  $("head").append(`<link rel="stylesheet" href="${cssUrl}">`);
-  $("#extensions_settings").append(html);
+  console.log("NghiTTS: Initializing UI...");
+  $("head").append(`<style>${style_default}</style>`);
+  $("#extensions_settings").append(index_default);
   $("#nghitts_refresh_btn").on("click", fetchModelsList);
   $("#nghitts_model").on("change", onModelChange);
   $("#nghitts_download_btn").on("click", downloadSelectedModel);

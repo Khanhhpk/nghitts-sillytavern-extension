@@ -4,7 +4,7 @@ const commonConfig = {
   bundle: true,
   format: 'esm',
   target: 'es2020',
-  loader: { '.csv': 'text' }
+  loader: { '.csv': 'text', '.html': 'text', '.css': 'text' }
 };
 
 esbuild.build({

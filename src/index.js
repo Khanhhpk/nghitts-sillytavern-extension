@@ -1,5 +1,7 @@
 // NghiTTS SillyTavern Extension
 import { downloadModelToCache, checkModelInCache } from './utils/model-cache.js';
+import uiHtml from './index.html';
+import uiCss from './style.css';
 
 let worker = null;
 let voicesList = [];
@@ -10,15 +12,13 @@ let currentSpeed = 1.0;
 const NGHITTS_API = 'https://nghitts.app/api';
 
 async function initUI() {
-    const htmlResponse = await fetch(import.meta.url.replace('index.js', 'index.html'));
-    const html = await htmlResponse.text();
+    console.log("NghiTTS: Initializing UI...");
     
-    const cssUrl = import.meta.url.replace('index.js', 'style.css');
-    $('head').append(`<link rel="stylesheet" href="${cssUrl}">`);
+    $('head').append(`<style>${uiCss}</style>`);
     
     // In ST, the TTS settings usually go into the #tts_settings area or a custom extensions tab.
     // For a generic extension, appending to the extensions menu:
-    $('#extensions_settings').append(html);
+    $('#extensions_settings').append(uiHtml);
     
     $('#nghitts_refresh_btn').on('click', fetchModelsList);
     $('#nghitts_model').on('change', onModelChange);
