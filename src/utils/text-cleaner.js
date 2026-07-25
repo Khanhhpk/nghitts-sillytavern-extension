@@ -497,28 +497,46 @@ export async function chunkText(text) {
     // First, split by newlines
     const lines = text.split('\n');
     const chunks = [];
+    const MAX_CHUNK_LENGTH = 100; // safe limit for Piper to prevent skipping
 
     for (const line of lines) {
         // Skip empty lines
         if (line.trim() === '') continue;
 
         // Check if the line already ends with punctuation
-        const endsWithPunctuation = /[.!?]$/.test(line.trim());
+        const endsWithPunctuation = /[.!?,:;…]$/.test(line.trim());
 
         // If it doesn't end with punctuation and it's not empty, add a period
         const processedLine = endsWithPunctuation ? line : line.trim() + '.';
 
-        // Split the line into sentences based on punctuation followed by whitespace or end of line
-        // Using regex with positive lookbehind and lookahead to keep punctuation with the sentence
-        // Commas are NOT used for splitting - they stay within sentences
-        const sentences = processedLine.split(/(?<=[.!?])(?=\s+|$)/);
+        // Split by all major punctuation marks followed by whitespace or end of line
+        const parts = processedLine.split(/(?<=[.!?,:;…])(?=\s+|$)/);
 
-        // Each sentence becomes its own chunk (no combining)
-        for (const sentence of sentences) {
-            const trimmedSentence = sentence.trim();
-            if (trimmedSentence) {
-                chunks.push(trimmedSentence);
+        let currentChunk = '';
+
+        for (const part of parts) {
+            const trimmedPart = part.trim();
+            if (!trimmedPart) continue;
+
+            if (currentChunk.length + trimmedPart.length + 1 > MAX_CHUNK_LENGTH) {
+                if (currentChunk) {
+                    chunks.push(currentChunk);
+                    currentChunk = trimmedPart;
+                } else {
+                    // Part itself is too long, just push it
+                    chunks.push(trimmedPart);
+                }
+            } else {
+                if (currentChunk) {
+                    currentChunk += ' ' + trimmedPart;
+                } else {
+                    currentChunk = trimmedPart;
+                }
             }
+        }
+
+        if (currentChunk) {
+            chunks.push(currentChunk);
         }
     }
 
