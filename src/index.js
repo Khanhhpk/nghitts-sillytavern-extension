@@ -107,7 +107,15 @@ class AudioStreamer {
         source.buffer = audioBuffer;
         source.connect(this.audioContext.destination);
 
-        const scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+        let scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+        
+        // If queue is empty (very first chunk, or we experienced an underrun),
+        // we add a small buffer (250ms) ahead of currentTime. This gives sleepy
+        // audio hardware/Bluetooth enough time to wake up, preventing clipped syllables.
+        if (this.sourceNodes.length === 0) {
+            scheduleTime = Math.max(scheduleTime, this.audioContext.currentTime + 0.25);
+        }
+
         source.start(scheduleTime);
         this.sourceNodes.push(source);
 

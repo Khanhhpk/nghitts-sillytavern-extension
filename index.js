@@ -1764,7 +1764,10 @@ var AudioStreamer = class {
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
-    const scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+    let scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+    if (this.sourceNodes.length === 0) {
+      scheduleTime = Math.max(scheduleTime, this.audioContext.currentTime + 0.25);
+    }
     source.start(scheduleTime);
     this.sourceNodes.push(source);
     this.nextStartTime = scheduleTime + audioBuffer.duration;
