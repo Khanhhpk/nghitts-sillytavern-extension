@@ -57,4 +57,4 @@ Bản mod này đã tinh chỉnh lại luồng xử lý Audio Context, xây dự
 - Gói đóng gói (Bundler): `esbuild`.
 
 ## 📜 Giấy phép (License)
-Dự án được phân phối dưới giấy phép **MIT License**. Bạn có toàn quyền sử dụng, sửa đổi và phân phối lại mã nguồn. Chi tiết xem tại tệp `LICENSE` (nếu có).
+Dự án được phân phối dưới giấy phép **MIT License**. Bạn có toàn quyền sử dụng, sửa đổi và phân phối lại mã nguồn một cách tự do, kể cả trong các dự án thương mại, miễn là giữ nguyên thông báo bản quyền gốc. Chi tiết xem tại tệp `LICENSE` trong kho lưu trữ này.
