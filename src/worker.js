@@ -135,7 +135,7 @@ async function handleMessage(data) {
   // lengthScale and stream() already defined above
 
   try {
-    for await (const { text, audio } of stream) {
+    for await (const { audio } of stream) {
       self.postMessage({
         status: "stream",
         chunk: {
