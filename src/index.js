@@ -845,7 +845,10 @@ jQuery(async () => {
     injectDedicatedUI();
     
     // Export globally for manual testing or other scripts
-    window.NghiTTS = { generate: generateTTS };
+    window.NghiTTS = { 
+        generate: generateTTS,
+        stop: () => audioStreamer.stop()
+    };
 });
 
 // -----------------------------------------------------------------------
