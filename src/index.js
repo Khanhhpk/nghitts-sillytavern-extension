@@ -3,6 +3,8 @@ import { downloadModelToCache, checkModelInCache } from './utils/model-cache.js'
 import uiHtml from './index.html';
 import uiCss from './style.css';
 
+console.log("[NghiTTS] Extension module loading...");
+
 let worker = null;
 let voicesList = [];
 let modelsList = [];
@@ -12,7 +14,7 @@ let currentSpeed = 1.0;
 const NGHITTS_API = 'https://nghitts.app/api';
 
 async function initUI() {
-    console.log("NghiTTS: Initializing UI...");
+    console.log("[NghiTTS] Initializing UI...");
     
     function injectUI() {
         const container = document.getElementById('extensions_settings');
@@ -252,23 +254,20 @@ const providerInfo = {
     }
 };
 
-// Wait for SillyTavern UI to load, then inject
-jQuery(async () => {
+export async function init() {
+    console.log('[NghiTTS] Extension init() called by SillyTavern');
     await initUI();
     
     try {
-        // Try to register with SillyTavern's TTS extension (ST 1.11+)
-        // Assuming extension is in public/scripts/extensions/third-party/nghitts
         const ttsModule = await import('../../tts/index.js');
         if (ttsModule && ttsModule.registerTTSProvider) {
             ttsModule.registerTTSProvider('nghitts', providerInfo);
-            console.log("NghiTTS: Registered with ST TTS subsystem");
+            console.log('[NghiTTS] Registered with ST TTS subsystem');
         }
     } catch (e) {
-        console.log("NghiTTS: Standard TTS module not found. Hooking fallback.", e);
-        // Fallback global exposure
+        console.log('[NghiTTS] Standard TTS module not found. Hooking fallback.', e);
         window.NghiTTS = {
             generate: generateTTS
         };
     }
-});
+}

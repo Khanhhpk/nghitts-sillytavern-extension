@@ -101,6 +101,7 @@ var index_default = '<div class="nghitts-settings">\n    <div class="inline-draw
 var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
 
 // src/index.js
+console.log("[NghiTTS] Extension module loading...");
 var worker = null;
 var voicesList = [];
 var modelsList = [];
@@ -108,7 +109,7 @@ var currentModel = "";
 var currentSpeed = 1;
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
-  console.log("NghiTTS: Initializing UI...");
+  console.log("[NghiTTS] Initializing UI...");
   function injectUI() {
     const container = document.getElementById("extensions_settings");
     if (!container) {
@@ -296,18 +297,22 @@ var providerInfo = {
     });
   }
 };
-jQuery(async () => {
+async function init() {
+  console.log("[NghiTTS] Extension init() called by SillyTavern");
   await initUI();
   try {
     const ttsModule = await import("../../tts/index.js");
     if (ttsModule && ttsModule.registerTTSProvider) {
       ttsModule.registerTTSProvider("nghitts", providerInfo);
-      console.log("NghiTTS: Registered with ST TTS subsystem");
+      console.log("[NghiTTS] Registered with ST TTS subsystem");
     }
   } catch (e) {
-    console.log("NghiTTS: Standard TTS module not found. Hooking fallback.", e);
+    console.log("[NghiTTS] Standard TTS module not found. Hooking fallback.", e);
     window.NghiTTS = {
       generate: generateTTS
     };
   }
-});
+}
+export {
+  init
+};
