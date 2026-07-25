@@ -55,6 +55,7 @@
                 <label for="nghitts_test_text">Test TTS:</label>
                 <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nhập văn bản cần đọc..."></textarea>
                 <div style="display: flex; justify-content: flex-end; margin-top: 5px; gap: 10px;">
+                    <button id="nghitts_preview_payload_btn" class="menu_button" title="Xem trước Payload"><i class="fa-solid fa-eye"></i></button>
                     <button id="nghitts_stop_test_btn" class="menu_button" style="display: none; background-color: var(--smartThemeDangerColor, #d9534f); color: white;">Stop TTS</button>
                     <button id="nghitts_test_btn" class="menu_button">Test Audio</button>
                 </div>
@@ -103,5 +104,17 @@
     
     <div style="text-align: right; margin-top: 20px;">
         <button id="nghitts_advanced_close" class="menu_button">Đóng lại</button>
+    </div>
+</dialog>
+
+<!-- Dialog for Payload Preview -->
+<dialog id="nghitts_payload_modal" style="border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; background: var(--SmartThemeBlurTintColor); backdrop-filter: blur(20px); color: var(--SmartThemeBodyColor); padding: 20px; width: 90%; max-width: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+    <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 10px;"><i class="fa-solid fa-eye"></i> Xem trước Payload</h3>
+    <div style="font-size: 0.85em; color: var(--grey_text); margin-bottom: 10px; text-align: center;">Đây là những cục văn bản (chunks) thực tế sẽ được gửi xuống cho AI đọc sau khi đã qua bộ lọc (Cleaner) và bị chặt ra.</div>
+    <div id="nghitts_payload_content" style="max-height: 400px; overflow-y: auto; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Payload chunks will be injected here -->
+    </div>
+    <div style="display: flex; justify-content: center;">
+        <button id="nghitts_payload_close" class="menu_button">Đóng</button>
     </div>
 </dialog>

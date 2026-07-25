@@ -427,6 +427,90 @@ function initAdvancedSettingsUI() {
         if (modal) modal.close();
     });
 
+    // Payload Preview Logic
+    $('#nghitts_preview_payload_btn').on('click', async () => {
+        const text = $('#nghitts_test_text').val().trim();
+        if (!text) {
+            toastr?.warning('Vui lòng nhập văn bản vào ô Test TTS trước khi xem payload!');
+            return;
+        }
+
+        const modal = document.getElementById('nghitts_payload_modal');
+        if (!modal) return;
+
+        // Simulate pre-processing steps
+        let dictText = text;
+        if (nghittsDictionary && nghittsDictionary.length > 0) {
+            nghittsDictionary.forEach(item => {
+                if (item.word && item.pron) {
+                    dictText = dictText.split(item.word).join(item.pron);
+                }
+            });
+        }
+
+        let rawChunks = [dictText];
+        if (nghittsPauses && nghittsPauses.length > 0) {
+            let tempRaw = [];
+            for (let rc of rawChunks) {
+                let tempChunk = rc;
+                nghittsPauses.forEach(p => {
+                    if (p.symbol) {
+                        const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        tempChunk = tempChunk.replace(new RegExp(escaped, 'g'), p.symbol + '||SPLIT||');
+                    }
+                });
+                tempRaw.push(...tempChunk.split('||SPLIT||').filter(s => s.trim().length > 0));
+            }
+            rawChunks = tempRaw;
+        }
+
+        let finalChunks = [];
+        for (let rc of rawChunks) {
+            let endingPauseSymbol = null;
+            if (nghittsPauses && nghittsPauses.length > 0) {
+                for (let p of nghittsPauses) {
+                    if (p.symbol && rc.endsWith(p.symbol)) {
+                        endingPauseSymbol = p.symbol;
+                        break;
+                    }
+                }
+            }
+            
+            const processed = await processTextForTTS(rc);
+            const subChunks = await chunkText(processed);
+            
+            if (endingPauseSymbol && subChunks.length > 0) {
+                subChunks[subChunks.length - 1] += endingPauseSymbol;
+            }
+            
+            finalChunks.push(...subChunks);
+        }
+
+        // Render to UI
+        const $content = $('#nghitts_payload_content');
+        $content.empty();
+        
+        if (finalChunks.length === 0) {
+            $content.append('<div style="text-align: center; color: var(--grey_text);">Không có nội dung.</div>');
+        } else {
+            finalChunks.forEach((c, idx) => {
+                $content.append(`
+                    <div style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; border-left: 3px solid var(--SmartThemeQuoteColor);">
+                        <div style="font-size: 0.8em; color: var(--grey_text); margin-bottom: 3px;">Chunk #${idx + 1}</div>
+                        <div>${c}</div>
+                    </div>
+                `);
+            });
+        }
+        
+        modal.showModal();
+    });
+
+    $('#nghitts_payload_close').on('click', () => {
+        const modal = document.getElementById('nghitts_payload_modal');
+        if (modal) modal.close();
+    });
+
     // Dictionary Logic
     function renderDictionaryList() {
         const $list = $('#nghitts_dict_list');
