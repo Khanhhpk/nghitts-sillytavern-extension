@@ -1,6 +1,7 @@
 import { PiperTTS, TextSplitterStream } from "./lib/piper-tts.js";
 
 let tts = null;
+let initPromise = null;
 
 // Initialize the model
 async function initializeModel(modelName = null, baseUrl = '') {
@@ -60,10 +61,15 @@ self.addEventListener("message", async (e) => {
   
   // Handle initialization
   if (type === 'init') {
-    await initializeModel(e.data.model, e.data.baseUrl);
+    initPromise = initializeModel(e.data.model, e.data.baseUrl);
+    await initPromise;
     return;
   }
   
+  if (!tts && initPromise) {
+    await initPromise;
+  }
+
   // Handle TTS generation
   if (!tts) {
     self.postMessage({ status: "error", data: "Model not initialized", taskId });

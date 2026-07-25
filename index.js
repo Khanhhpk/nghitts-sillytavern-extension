@@ -2132,9 +2132,9 @@ function updateAllButtonsState() {
     const $this = $(this);
     let btnText = "";
     if ($this.attr("id") === "nghitts_quick_play") {
-      btnText = $(".mes:visible .mes_text").last().text();
+      btnText = $(".mes:visible .mes_text").last().text().trim();
     } else {
-      btnText = $this.closest(".mes").find(".mes_text").text();
+      btnText = $this.closest(".mes").find(".mes_text").text().trim();
     }
     const $i = $this.find("i");
     if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
