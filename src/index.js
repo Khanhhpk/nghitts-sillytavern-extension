@@ -57,17 +57,18 @@ class AudioStreamer {
         if (taskId !== this.currentTaskId) return;
         let seqObj = this.pendingChunks.get(sequenceId);
         if (!seqObj) {
-            seqObj = { buffers: [], sampleRate, text, isComplete: false };
+            seqObj = { buffers: [], sampleRate, text, isComplete: false, playCursor: 0 };
             this.pendingChunks.set(sequenceId, seqObj);
         }
         seqObj.buffers.push(audioData);
+        this.flushQueue();
     }
 
     markChunkComplete(taskId, sequenceId) {
         if (taskId !== this.currentTaskId) return;
         let seqObj = this.pendingChunks.get(sequenceId);
         if (!seqObj) {
-            seqObj = { buffers: [], isComplete: true };
+            seqObj = { buffers: [], isComplete: true, playCursor: 0 };
             this.pendingChunks.set(sequenceId, seqObj);
         } else {
             seqObj.isComplete = true;
@@ -82,17 +83,28 @@ class AudioStreamer {
         
         while (true) {
             const seqObj = this.pendingChunks.get(this.expectedSequenceId);
-            if (seqObj && seqObj.isComplete) {
-                // Play all buffers for this sequenceId
-                for (const audioData of seqObj.buffers) {
-                    this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, seqObj.text);
-                }
+            if (!seqObj) break;
+            
+            // Play any unplayed buffers progressively
+            while (seqObj.playCursor < seqObj.buffers.length) {
+                const audioData = seqObj.buffers[seqObj.playCursor];
                 
-                // Remove from pending map to free memory
+                // Is this the very last buffer of the chunk?
+                const isLastBuffer = seqObj.isComplete && (seqObj.playCursor === seqObj.buffers.length - 1);
+                
+                // Only pass the text (which contains the custom pause symbol) if it's the final buffer
+                // This prevents duplicating extra pauses if a chunk yields multiple progressive buffers
+                this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
+                
+                seqObj.playCursor++;
+            }
+
+            // Only advance to the next chunk if this one is fully complete and all its buffers played
+            if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
                 this.pendingChunks.delete(this.expectedSequenceId);
                 this.expectedSequenceId++;
             } else {
-                break; // Still waiting for this sequenceId
+                break; // Still waiting for more progressive buffers of this sequenceId
             }
         }
         
@@ -443,7 +455,8 @@ function initAdvancedSettingsUI() {
         if (nghittsDictionary && nghittsDictionary.length > 0) {
             nghittsDictionary.forEach(item => {
                 if (item.word && item.pron) {
-                    dictText = dictText.split(item.word).join(item.pron);
+                    const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
                 }
             });
         }
@@ -751,7 +764,8 @@ async function generateTTS(text, voiceId, resolve, reject) {
         if (nghittsDictionary && nghittsDictionary.length > 0) {
             nghittsDictionary.forEach(item => {
                 if (item.word && item.pron) {
-                    dictText = dictText.split(item.word).join(item.pron);
+                    const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
                 }
             });
         }
