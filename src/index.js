@@ -571,6 +571,11 @@ async function playTextWithNghiTTS(text) {
     }
 }
 
+function getReadableText($el) {
+    if (!$el || $el.length === 0 || !$el[0]) return '';
+    return ($el[0].innerText || $el.text() || '').trim();
+}
+
 function updateAllButtonsState() {
     const isPlaying = audioStreamer.isPlaying || audioStreamer.isGenerating;
     
@@ -578,9 +583,9 @@ function updateAllButtonsState() {
         const $this = $(this);
         let btnText = '';
         if ($this.attr('id') === 'nghitts_quick_play') {
-            btnText = $('.mes:visible .mes_text').last().text().trim();
+            btnText = getReadableText($('.mes:visible .mes_text').last());
         } else {
-            btnText = $this.closest('.mes').find('.mes_text').text().trim();
+            btnText = getReadableText($this.closest('.mes').find('.mes_text'));
         }
         
         const $i = $this.find('i');
@@ -607,7 +612,7 @@ function addPlayButtonToMessage(mesElement) {
         if (e.type !== 'click') return; // process click only
         e.preventDefault();
         e.stopPropagation();
-        const text = $mes.find('.mes_text').text().trim();
+        const text = getReadableText($mes.find('.mes_text'));
         console.log("[NghiTTS] Play button clicked. Text length:", text.length);
         if (text) {
             playTextWithNghiTTS(text);
@@ -653,7 +658,7 @@ function injectDedicatedUI() {
                 // Find last message text (exclude swipes/hidden)
                 const $lastMes = $('.mes:visible .mes_text').last();
                 if ($lastMes.length > 0) {
-                    const text = $lastMes.text().trim();
+                    const text = getReadableText($lastMes);
                     console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
                     if (text) {
                         playTextWithNghiTTS(text);
