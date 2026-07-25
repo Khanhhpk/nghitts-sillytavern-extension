@@ -133,6 +133,9 @@ class AudioStreamer {
     checkCompletion() {
         const allChunksProcessed = (this.totalChunksExpected > 0 && this.chunksCompletedCount === this.totalChunksExpected);
         if (allChunksProcessed && this.sourceNodes.length === 0 && this.isPlaying) {
+            if (this.currentTaskId && typeof pendingTasks !== 'undefined') {
+                pendingTasks.delete(this.currentTaskId);
+            }
             this.isPlaying = false;
             this.isGenerating = false;
             if (this.resolvePromise) {
@@ -145,6 +148,9 @@ class AudioStreamer {
     stop() {
         if (this.currentTaskId && typeof workerPool !== 'undefined') {
             workerPool.cancelTask(this.currentTaskId);
+            if (typeof pendingTasks !== 'undefined') {
+                pendingTasks.delete(this.currentTaskId);
+            }
         }
         this.isPlaying = false;
         this.isGenerating = false;
