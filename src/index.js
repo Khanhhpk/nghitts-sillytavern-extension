@@ -673,7 +673,24 @@ async function generateTTS(text, voiceId, resolve, reject) {
         }
         
         const processed = await processTextForTTS(dictText);
-        const chunks = await chunkText(processed);
+        let chunks = await chunkText(processed);
+        
+        // Force split chunks by custom pause symbols
+        if (nghittsPauses && nghittsPauses.length > 0) {
+            let newChunks = [];
+            for (let chunk of chunks) {
+                let tempChunk = chunk;
+                nghittsPauses.forEach(p => {
+                    if (p.symbol) {
+                        const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        tempChunk = tempChunk.replace(new RegExp(escaped, 'g'), p.symbol + '||SPLIT||');
+                    }
+                });
+                const subChunks = tempChunk.split('||SPLIT||').map(s => s.trim()).filter(s => s.length > 0);
+                newChunks.push(...subChunks);
+            }
+            chunks = newChunks;
+        }
         
         if (chunks.length === 0) {
             audioStreamer.stop();
