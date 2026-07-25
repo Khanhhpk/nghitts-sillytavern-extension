@@ -136,8 +136,9 @@ var AudioStreamer = class {
     this.isPlaying = false;
     this.resolvePromise = null;
     this.sourceNodes = [];
+    this.currentTaskId = null;
   }
-  startNewSession(resolve) {
+  startNewSession(resolve, taskId) {
     this.stop();
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -149,9 +150,10 @@ var AudioStreamer = class {
     this.isPlaying = true;
     this.resolvePromise = resolve;
     this.sourceNodes = [];
+    this.currentTaskId = taskId;
   }
-  queueFloat32Array(audioData, sampleRate) {
-    if (!this.isPlaying || !this.audioContext) return;
+  queueFloat32Array(audioData, sampleRate, taskId) {
+    if (!this.isPlaying || !this.audioContext || taskId !== this.currentTaskId) return;
     const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
     audioBuffer.getChannelData(0).set(audioData);
     const source = this.audioContext.createBufferSource();
@@ -246,11 +248,13 @@ var WorkerPool = class {
           if (taskId && pendingTasks.has(taskId)) {
             pendingTasks.get(taskId).resolve();
             pendingTasks.delete(taskId);
-            audioStreamer.markComplete();
+            if (taskId === audioStreamer.currentTaskId) {
+              audioStreamer.markComplete();
+            }
           }
         } else if (status === "stream" && chunk) {
           if (taskId && pendingTasks.has(taskId)) {
-            audioStreamer.queueFloat32Array(chunk.audio, chunk.sampleRate);
+            audioStreamer.queueFloat32Array(chunk.audio, chunk.sampleRate, taskId);
           }
         }
       };
@@ -314,7 +318,6 @@ async function initUI() {
       $btn.prop("disabled", true).text("Generating...");
       try {
         await new Promise((resolve, reject) => {
-          audioStreamer.startNewSession(resolve);
           generateTTS(text, voiceId, resolve, reject);
         });
       } catch (e) {
@@ -455,8 +458,13 @@ function generateTTS(text, voiceId, resolve, reject) {
     reject(new Error("Model not loaded"));
     return;
   }
+  for (const [id, task] of pendingTasks.entries()) {
+    task.resolve();
+    pendingTasks.delete(id);
+  }
   const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
   pendingTasks.set(taskId, { resolve, reject });
+  audioStreamer.startNewSession(resolve, taskId);
   workerPool.dispatch({
     type: "generate",
     text,
@@ -475,7 +483,6 @@ var providerInfo = {
   },
   fetchTtsGeneration: async (text, voiceId) => {
     return new Promise((resolve, reject) => {
-      audioStreamer.startNewSession(resolve);
       generateTTS(text, 0, resolve, reject);
     });
   },
