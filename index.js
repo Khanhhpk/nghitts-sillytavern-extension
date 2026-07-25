@@ -2095,41 +2095,11 @@ async function generateTTS(text, voiceId, resolve, reject) {
     reject(e);
   }
 }
-var providerInfo = {
-  name: "nghitts_wasm",
-  displayName: "NghiTTS (Local WASM)",
-  // Tell ST we have at least one default voice, using the current model name
-  get voices() {
-    if (!currentModel) return [];
-    return [{ id: 0, name: currentModel }];
-  },
-  fetchTtsGeneration: async (text, voiceId) => {
-    return new Promise((resolve, reject) => {
-      generateTTS(text, 0, resolve, reject);
-    });
-  },
-  onStopTts: () => {
-    audioStreamer.stop();
-    for (const [id, task] of pendingTasks.entries()) {
-      task.resolve();
-      pendingTasks.delete(id);
-    }
-  }
-};
 jQuery(async () => {
   console.log("[NghiTTS] Extension initializing...");
   await initUI();
   injectDedicatedUI();
-  try {
-    const ttsModule = await import("../tts/index.js");
-    if (ttsModule && ttsModule.registerTtsProvider) {
-      ttsModule.registerTtsProvider("nghitts", providerInfo);
-      console.log("[NghiTTS] Registered with ST TTS subsystem");
-    }
-  } catch (e) {
-    console.log("[NghiTTS] Standard TTS module not found. Hooking fallback.", e);
-    window.NghiTTS = { generate: generateTTS };
-  }
+  window.NghiTTS = { generate: generateTTS };
 });
 var currentPlayingText = null;
 async function playTextWithNghiTTS(text) {
@@ -2182,10 +2152,15 @@ function addPlayButtonToMessage(mesElement) {
   const $btn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn n\xE0y" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
   $btn.on("mouseenter", () => $btn.css("opacity", "1"));
   $btn.on("mouseleave", () => $btn.css("opacity", "0.6"));
-  $btn.on("click", function(e) {
+  $btn.on("click mousedown touchstart", function(e) {
+    if (e.type !== "click") return;
+    e.preventDefault();
     e.stopPropagation();
-    const text = $mes.find(".mes_text").text();
-    playTextWithNghiTTS(text);
+    const text = $mes.find(".mes_text").text().trim();
+    console.log("[NghiTTS] Play button clicked. Text length:", text.length);
+    if (text) {
+      playTextWithNghiTTS(text);
+    }
   });
   const $buttons = $mes.find(".mes_buttons");
   if ($buttons.length > 0) {
@@ -2210,11 +2185,17 @@ function injectDedicatedUI() {
       const $btn = $('<div id="nghitts_quick_play" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn m\u1EDBi nh\u1EA5t" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
       $btn.on("mouseenter", () => $btn.css("opacity", "1"));
       $btn.on("mouseleave", () => $btn.css("opacity", "0.7"));
-      $btn.on("click", (e) => {
+      $btn.on("click mousedown touchstart", (e) => {
+        if (e.type !== "click") return;
+        e.preventDefault();
         e.stopPropagation();
         const $lastMes = $(".mes:visible .mes_text").last();
         if ($lastMes.length > 0) {
-          playTextWithNghiTTS($lastMes.text());
+          const text = $lastMes.text().trim();
+          console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
+          if (text) {
+            playTextWithNghiTTS(text);
+          }
         }
       });
       if ($("#send_but").length > 0) {

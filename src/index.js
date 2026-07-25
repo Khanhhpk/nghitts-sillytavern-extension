@@ -516,31 +516,6 @@ async function generateTTS(text, voiceId, resolve, reject) {
     }
 }
 
-// Register with SillyTavern 1.18 TTS subsystem
-const providerInfo = {
-    name: 'nghitts_wasm',
-    displayName: 'NghiTTS (Local WASM)',
-    // Tell ST we have at least one default voice, using the current model name
-    get voices() {
-        if (!currentModel) return [];
-        return [{ id: 0, name: currentModel }];
-    },
-    fetchTtsGeneration: async (text, voiceId) => {
-        // We ignore the voiceId from ST since our model IS the voice 
-        // (but we pass 0 internally)
-        return new Promise((resolve, reject) => {
-            generateTTS(text, 0, resolve, reject);
-        });
-    },
-    onStopTts: () => {
-        audioStreamer.stop();
-        for (const [id, task] of pendingTasks.entries()) {
-            task.resolve();
-            pendingTasks.delete(id);
-        }
-    }
-};
-
 jQuery(async () => {
     console.log("[NghiTTS] Extension initializing...");
     await initUI();
@@ -548,16 +523,8 @@ jQuery(async () => {
     // Inject dedicated UI buttons into ST chat and input bar
     injectDedicatedUI();
     
-    try {
-        const ttsModule = await import('../tts/index.js');
-        if (ttsModule && ttsModule.registerTtsProvider) {
-            ttsModule.registerTtsProvider('nghitts', providerInfo);
-            console.log("[NghiTTS] Registered with ST TTS subsystem");
-        }
-    } catch (e) {
-        console.log("[NghiTTS] Standard TTS module not found. Hooking fallback.", e);
-        window.NghiTTS = { generate: generateTTS };
-    }
+    // Export globally for manual testing or other scripts
+    window.NghiTTS = { generate: generateTTS };
 });
 
 // -----------------------------------------------------------------------
@@ -628,10 +595,15 @@ function addPlayButtonToMessage(mesElement) {
     $btn.on('mouseenter', () => $btn.css('opacity', '1'));
     $btn.on('mouseleave', () => $btn.css('opacity', '0.6'));
     
-    $btn.on('click', function(e) {
+    $btn.on('click mousedown touchstart', function(e) {
+        if (e.type !== 'click') return; // process click only
+        e.preventDefault();
         e.stopPropagation();
-        const text = $mes.find('.mes_text').text();
-        playTextWithNghiTTS(text);
+        const text = $mes.find('.mes_text').text().trim();
+        console.log("[NghiTTS] Play button clicked. Text length:", text.length);
+        if (text) {
+            playTextWithNghiTTS(text);
+        }
     });
     
     const $buttons = $mes.find('.mes_buttons');
@@ -666,12 +638,18 @@ function injectDedicatedUI() {
             $btn.on('mouseenter', () => $btn.css('opacity', '1'));
             $btn.on('mouseleave', () => $btn.css('opacity', '0.7'));
             
-            $btn.on('click', (e) => {
+            $btn.on('click mousedown touchstart', (e) => {
+                if (e.type !== 'click') return;
+                e.preventDefault();
                 e.stopPropagation();
                 // Find last message text (exclude swipes/hidden)
                 const $lastMes = $('.mes:visible .mes_text').last();
                 if ($lastMes.length > 0) {
-                    playTextWithNghiTTS($lastMes.text());
+                    const text = $lastMes.text().trim();
+                    console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
+                    if (text) {
+                        playTextWithNghiTTS(text);
+                    }
                 }
             });
             
