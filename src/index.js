@@ -14,48 +14,63 @@ const NGHITTS_API = 'https://nghitts.app/api';
 async function initUI() {
     console.log("NghiTTS: Initializing UI...");
     
-    $('head').append(`<style>${uiCss}</style>`);
-    
-    // In ST, the TTS settings usually go into the #tts_settings area or a custom extensions tab.
-    // For a generic extension, appending to the extensions menu:
-    $('#extensions_settings').append(uiHtml);
-    
-    $('#nghitts_refresh_btn').on('click', fetchModelsList);
-    $('#nghitts_model').on('change', onModelChange);
-    $('#nghitts_download_btn').on('click', downloadSelectedModel);
-    $('#nghitts_speed').on('input', function() {
-        currentSpeed = parseFloat($(this).val());
-        $('#nghitts_speed_val').text(currentSpeed.toFixed(1));
-    });
-    
-    $('#nghitts_test_btn').on('click', async function() {
-        const text = $('#nghitts_test_text').val().trim();
-        const voiceId = $('#nghitts_voice').val();
-        if (!text) {
-            toastr?.info("Vui lòng nhập văn bản để test.");
-            return;
-        }
-        if (!voiceId) {
-            toastr?.error("Chưa tải hoặc chưa chọn Voice.");
+    function injectUI() {
+        const container = document.getElementById('extensions_settings');
+        if (!container) {
+            console.log("NghiTTS: Waiting for #extensions_settings...");
+            setTimeout(injectUI, 500);
             return;
         }
         
-        const $btn = $(this);
-        $btn.prop('disabled', true).text('Generating...');
-        try {
-            const audioUrl = await generateTTS(text, voiceId);
-            const audio = new Audio(audioUrl);
-            audio.play();
-            audio.onended = () => URL.revokeObjectURL(audioUrl);
-        } catch (e) {
-            console.error("Test TTS Error:", e);
-        } finally {
-            $btn.prop('disabled', false).text('Test Audio');
+        $('head').append(`<style>${uiCss}</style>`);
+        
+        const $wrapper = $('<div class="extension_container nghitts_wrapper"></div>');
+        $wrapper.html(uiHtml);
+        $(container).append($wrapper);
+        
+        $('#nghitts_refresh_btn').on('click', fetchModelsList);
+        $('#nghitts_model').on('change', onModelChange);
+        $('#nghitts_download_btn').on('click', downloadSelectedModel);
+        $('#nghitts_speed').on('input', function() {
+            currentSpeed = parseFloat($(this).val());
+            $('#nghitts_speed_val').text(currentSpeed.toFixed(1));
+        });
+        
+        $('#nghitts_test_btn').on('click', async function() {
+            const text = $('#nghitts_test_text').val().trim();
+            const voiceId = $('#nghitts_voice').val();
+            if (!text) {
+                toastr?.info("Vui lòng nhập văn bản để test.");
+                return;
+            }
+            if (!voiceId) {
+                toastr?.error("Chưa tải hoặc chưa chọn Voice.");
+                return;
+            }
+            
+            const $btn = $(this);
+            $btn.prop('disabled', true).text('Generating...');
+            try {
+                const audioUrl = await generateTTS(text, voiceId);
+                const audio = new Audio(audioUrl);
+                audio.play();
+                audio.onended = () => URL.revokeObjectURL(audioUrl);
+            } catch (e) {
+                console.error("Test TTS Error:", e);
+            } finally {
+                $btn.prop('disabled', false).text('Test Audio');
+            }
+        });
+        
+        // Initially fetch the list
+        fetchModelsList();
+        
+        if (typeof toastr !== 'undefined') {
+            toastr.success('NghiTTS Extension Loaded!');
         }
-    });
+    }
     
-    // Initially fetch the list
-    await fetchModelsList();
+    injectUI();
 }
 
 async function fetchModelsList() {

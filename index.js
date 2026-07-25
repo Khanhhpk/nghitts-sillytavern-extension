@@ -109,40 +109,54 @@ var currentSpeed = 1;
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
   console.log("NghiTTS: Initializing UI...");
-  $("head").append(`<style>${style_default}</style>`);
-  $("#extensions_settings").append(index_default);
-  $("#nghitts_refresh_btn").on("click", fetchModelsList);
-  $("#nghitts_model").on("change", onModelChange);
-  $("#nghitts_download_btn").on("click", downloadSelectedModel);
-  $("#nghitts_speed").on("input", function() {
-    currentSpeed = parseFloat($(this).val());
-    $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
-  });
-  $("#nghitts_test_btn").on("click", async function() {
-    const text = $("#nghitts_test_text").val().trim();
-    const voiceId = $("#nghitts_voice").val();
-    if (!text) {
-      toastr?.info("Vui l\xF2ng nh\u1EADp v\u0103n b\u1EA3n \u0111\u1EC3 test.");
+  function injectUI() {
+    const container = document.getElementById("extensions_settings");
+    if (!container) {
+      console.log("NghiTTS: Waiting for #extensions_settings...");
+      setTimeout(injectUI, 500);
       return;
     }
-    if (!voiceId) {
-      toastr?.error("Ch\u01B0a t\u1EA3i ho\u1EB7c ch\u01B0a ch\u1ECDn Voice.");
-      return;
+    $("head").append(`<style>${style_default}</style>`);
+    const $wrapper = $('<div class="extension_container nghitts_wrapper"></div>');
+    $wrapper.html(index_default);
+    $(container).append($wrapper);
+    $("#nghitts_refresh_btn").on("click", fetchModelsList);
+    $("#nghitts_model").on("change", onModelChange);
+    $("#nghitts_download_btn").on("click", downloadSelectedModel);
+    $("#nghitts_speed").on("input", function() {
+      currentSpeed = parseFloat($(this).val());
+      $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
+    });
+    $("#nghitts_test_btn").on("click", async function() {
+      const text = $("#nghitts_test_text").val().trim();
+      const voiceId = $("#nghitts_voice").val();
+      if (!text) {
+        toastr?.info("Vui l\xF2ng nh\u1EADp v\u0103n b\u1EA3n \u0111\u1EC3 test.");
+        return;
+      }
+      if (!voiceId) {
+        toastr?.error("Ch\u01B0a t\u1EA3i ho\u1EB7c ch\u01B0a ch\u1ECDn Voice.");
+        return;
+      }
+      const $btn = $(this);
+      $btn.prop("disabled", true).text("Generating...");
+      try {
+        const audioUrl = await generateTTS(text, voiceId);
+        const audio = new Audio(audioUrl);
+        audio.play();
+        audio.onended = () => URL.revokeObjectURL(audioUrl);
+      } catch (e) {
+        console.error("Test TTS Error:", e);
+      } finally {
+        $btn.prop("disabled", false).text("Test Audio");
+      }
+    });
+    fetchModelsList();
+    if (typeof toastr !== "undefined") {
+      toastr.success("NghiTTS Extension Loaded!");
     }
-    const $btn = $(this);
-    $btn.prop("disabled", true).text("Generating...");
-    try {
-      const audioUrl = await generateTTS(text, voiceId);
-      const audio = new Audio(audioUrl);
-      audio.play();
-      audio.onended = () => URL.revokeObjectURL(audioUrl);
-    } catch (e) {
-      console.error("Test TTS Error:", e);
-    } finally {
-      $btn.prop("disabled", false).text("Test Audio");
-    }
-  });
-  await fetchModelsList();
+  }
+  injectUI();
 }
 async function fetchModelsList() {
   try {
