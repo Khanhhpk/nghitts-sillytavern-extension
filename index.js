@@ -297,8 +297,8 @@ var providerInfo = {
     });
   }
 };
-async function init() {
-  console.log("[NghiTTS] Extension init() called by SillyTavern");
+jQuery(async () => {
+  console.log("[NghiTTS] Extension initializing...");
   await initUI();
   try {
     const ttsModule = await import("../../tts/index.js");
@@ -308,11 +308,6 @@ async function init() {
     }
   } catch (e) {
     console.log("[NghiTTS] Standard TTS module not found. Hooking fallback.", e);
-    window.NghiTTS = {
-      generate: generateTTS
-    };
+    window.NghiTTS = { generate: generateTTS };
   }
-}
-export {
-  init
-};
+});

@@ -254,20 +254,18 @@ const providerInfo = {
     }
 };
 
-export async function init() {
-    console.log('[NghiTTS] Extension init() called by SillyTavern');
+jQuery(async () => {
+    console.log("[NghiTTS] Extension initializing...");
     await initUI();
     
     try {
         const ttsModule = await import('../../tts/index.js');
         if (ttsModule && ttsModule.registerTTSProvider) {
             ttsModule.registerTTSProvider('nghitts', providerInfo);
-            console.log('[NghiTTS] Registered with ST TTS subsystem');
+            console.log("[NghiTTS] Registered with ST TTS subsystem");
         }
     } catch (e) {
-        console.log('[NghiTTS] Standard TTS module not found. Hooking fallback.', e);
-        window.NghiTTS = {
-            generate: generateTTS
-        };
+        console.log("[NghiTTS] Standard TTS module not found. Hooking fallback.", e);
+        window.NghiTTS = { generate: generateTTS };
     }
-}
+});
