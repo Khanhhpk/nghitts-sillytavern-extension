@@ -370,7 +370,10 @@ export function cleanTextForTTS(text) {
         // Remove dashes but preserve those between numbers (for date ranges like 25-26, year ranges like 1873-1907)
         .replace(/(?<!\d)-(?!\d)/g, ' ')
         // Remove non-Latin characters (keep basic Latin, Latin Extended, Vietnamese characters, numbers, punctuation, and whitespace)
-        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, '');
+        // Replaced with a space to prevent words from sticking together (e.g. đó——vậy -> đó vậy)
+        .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ')
+        // Collapse multiple spaces into a single space
+        .replace(/\s+/g, ' ');
     return cleanedText.trim();
 }
 
