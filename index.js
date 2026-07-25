@@ -246,7 +246,6 @@ var WorkerPool = class {
           }
         } else if (status === "complete") {
           if (taskId && pendingTasks.has(taskId)) {
-            pendingTasks.get(taskId).resolve();
             pendingTasks.delete(taskId);
             if (taskId === audioStreamer.currentTaskId) {
               audioStreamer.markComplete();

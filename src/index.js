@@ -143,10 +143,9 @@ class WorkerPool {
                     }
                 } else if (status === 'complete') {
                     if (taskId && pendingTasks.has(taskId)) {
-                        pendingTasks.get(taskId).resolve();
-                        pendingTasks.delete(taskId);
+                        pendingTasks.delete(taskId); // Remove from pending, but don't resolve yet
                         if (taskId === audioStreamer.currentTaskId) {
-                            audioStreamer.markComplete();
+                            audioStreamer.markComplete(); // Streamer will call resolve() when playback finishes
                         }
                     }
                 } else if (status === 'stream' && chunk) {
