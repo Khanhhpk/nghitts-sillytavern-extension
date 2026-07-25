@@ -1791,6 +1791,9 @@ var AudioStreamer = class {
     }
   }
   stop() {
+    if (this.currentTaskId && typeof workerPool !== "undefined") {
+      workerPool.cancelTask(this.currentTaskId);
+    }
     this.isPlaying = false;
     this.isGenerating = false;
     for (const source of this.sourceNodes) {
@@ -1914,6 +1917,11 @@ var WorkerPool = class {
     worker.nghiState = "\u0110ang \u0111\u1ECDc...";
     updateWorkerStatusUI();
     worker.postMessage(message);
+  }
+  cancelTask(taskId) {
+    for (const worker of this.workers) {
+      worker.postMessage({ type: "cancel", taskId });
+    }
   }
 };
 var workerPool = new WorkerPool();

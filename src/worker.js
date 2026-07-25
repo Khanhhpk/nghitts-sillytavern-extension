@@ -55,9 +55,39 @@ async function handlePreview(text, voice, speed) {
   }
 }
 
+const messageQueue = [];
+let isProcessingQueue = false;
+
 // Listen for messages from the main thread
-self.addEventListener("message", async (e) => {
-  const { type, text, voice, speed, model, taskId, sequenceId } = e.data;
+self.addEventListener("message", (e) => {
+  if (e.data.type === 'cancel') {
+    // Remove all pending messages matching this taskId
+    for (let i = messageQueue.length - 1; i >= 0; i--) {
+      if (messageQueue[i].taskId === e.data.taskId) {
+        messageQueue.splice(i, 1);
+      }
+    }
+    return;
+  }
+  
+  messageQueue.push(e.data);
+  processQueue();
+});
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  
+  while (messageQueue.length > 0) {
+    const data = messageQueue.shift();
+    await handleMessage(data);
+  }
+  
+  isProcessingQueue = false;
+}
+
+async function handleMessage(data) {
+  const { type, text, voice, speed, model, taskId, sequenceId } = data;
   
   // Handle initialization
   if (type === 'init') {
@@ -113,14 +143,13 @@ self.addEventListener("message", async (e) => {
         sequenceId
       });
     }
+    self.postMessage({ status: "complete", taskId, sequenceId });
   } catch (error) {
     console.error("Error during streaming:", error);
     self.postMessage({ status: "error", data: error.message, taskId, sequenceId });
     return;
   }
-
-  self.postMessage({ status: "complete", taskId, sequenceId });
-});
+}
 
 function normalizePeak(f32, target = 0.9) {
   if (!f32?.length) return;

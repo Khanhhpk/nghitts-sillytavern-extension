@@ -143,6 +143,9 @@ class AudioStreamer {
     }
 
     stop() {
+        if (this.currentTaskId && typeof workerPool !== 'undefined') {
+            workerPool.cancelTask(this.currentTaskId);
+        }
         this.isPlaying = false;
         this.isGenerating = false;
         for (const source of this.sourceNodes) {
@@ -284,6 +287,12 @@ class WorkerPool {
         updateWorkerStatusUI();
         
         worker.postMessage(message);
+    }
+    
+    cancelTask(taskId) {
+        for (const worker of this.workers) {
+            worker.postMessage({ type: 'cancel', taskId });
+        }
     }
 }
 
