@@ -2225,22 +2225,38 @@ async function generateTTS(text, voiceId, resolve, reject) {
         }
       });
     }
-    const processed = await processTextForTTS(dictText);
-    let chunks = await chunkText(processed);
+    let rawChunks = [dictText];
     if (nghittsPauses && nghittsPauses.length > 0) {
-      let newChunks = [];
-      for (let chunk of chunks) {
-        let tempChunk = chunk;
+      let tempRaw = [];
+      for (let rc of rawChunks) {
+        let tempChunk = rc;
         nghittsPauses.forEach((p) => {
           if (p.symbol) {
             const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             tempChunk = tempChunk.replace(new RegExp(escaped, "g"), p.symbol + "||SPLIT||");
           }
         });
-        const subChunks = tempChunk.split("||SPLIT||").map((s) => s.trim()).filter((s) => s.length > 0);
-        newChunks.push(...subChunks);
+        tempRaw.push(...tempChunk.split("||SPLIT||").filter((s) => s.trim().length > 0));
       }
-      chunks = newChunks;
+      rawChunks = tempRaw;
+    }
+    let chunks = [];
+    for (let rc of rawChunks) {
+      let endingPauseSymbol = null;
+      if (nghittsPauses && nghittsPauses.length > 0) {
+        for (let p of nghittsPauses) {
+          if (p.symbol && rc.endsWith(p.symbol)) {
+            endingPauseSymbol = p.symbol;
+            break;
+          }
+        }
+      }
+      const processed = await processTextForTTS(rc);
+      const subChunks = await chunkText(processed);
+      if (endingPauseSymbol && subChunks.length > 0) {
+        subChunks[subChunks.length - 1] += endingPauseSymbol;
+      }
+      chunks.push(...subChunks);
     }
     if (chunks.length === 0) {
       audioStreamer.stop();
