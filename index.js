@@ -117,7 +117,7 @@ async function getCachedModelsList() {
 }
 
 // src/index.html
-var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
+var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_workers" style="width: 60px;" title="S\u1ED1 worker ch\u1EA1y song song (1-8). T\u0103ng gi\xFAp x\u1EED l\xFD nhanh h\u01A1n nh\u01B0ng t\u1ED1n nhi\u1EC1u RAM.">Workers:</label>\n                <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">\n                <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(S\u1ED1 lu\u1ED3ng song song)</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
 
 // src/style.css
 var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
@@ -203,12 +203,24 @@ var AudioStreamer = class {
 };
 var audioStreamer = new AudioStreamer();
 var WorkerPool = class {
-  constructor(poolSize = 2) {
-    this.poolSize = poolSize;
+  constructor() {
+    this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 2;
     this.workers = [];
     this.currentWorkerIdx = 0;
+    this.currentModelName = "";
+  }
+  setPoolSize(size) {
+    const newSize = Math.max(1, parseInt(size) || 1);
+    if (newSize !== this.poolSize) {
+      this.poolSize = newSize;
+      localStorage.setItem("nghitts_worker_pool_size", this.poolSize);
+      if (this.currentModelName) {
+        this.init(this.currentModelName);
+      }
+    }
   }
   init(modelName) {
+    this.currentModelName = modelName;
     this.terminateAll();
     for (let i = 0; i < this.poolSize; i++) {
       const workerUrl = import.meta.url.replace("index.js", "worker.js");
@@ -263,7 +275,7 @@ var WorkerPool = class {
     worker2.postMessage(message);
   }
 };
-var workerPool = new WorkerPool(2);
+var workerPool = new WorkerPool();
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
   console.log("[NghiTTS] Initializing UI...");
@@ -289,6 +301,15 @@ async function initUI() {
         localStorage.setItem("nghitts_last_voice", currentModel);
         initWorker(currentModel);
       }
+    });
+    $("#nghitts_speed").on("input", function() {
+      currentSpeed = parseFloat($(this).val());
+      $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
+    });
+    $("#nghitts_workers").val(workerPool.poolSize);
+    $("#nghitts_workers").on("change", function() {
+      workerPool.setPoolSize($(this).val());
+      toastr?.success(`\u0110\xE3 \u0111\u1ED5i s\u1ED1 l\u01B0\u1EE3ng Worker th\xE0nh ${workerPool.poolSize}`);
     });
     $("#nghitts_test_btn").on("click", async function() {
       const text = $("#nghitts_test_text").val() || "Xin ch\xE0o, \u0111\xE2y l\xE0 gi\u1ECDng n\xF3i t\u1EEB Nghi TTS.";

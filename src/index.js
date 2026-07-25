@@ -95,13 +95,27 @@ class AudioStreamer {
 const audioStreamer = new AudioStreamer();
 
 class WorkerPool {
-    constructor(poolSize = 2) {
-        this.poolSize = poolSize;
+    constructor() {
+        this.poolSize = parseInt(localStorage.getItem('nghitts_worker_pool_size')) || 2;
         this.workers = [];
         this.currentWorkerIdx = 0;
+        this.currentModelName = '';
+    }
+
+    setPoolSize(size) {
+        const newSize = Math.max(1, parseInt(size) || 1);
+        if (newSize !== this.poolSize) {
+            this.poolSize = newSize;
+            localStorage.setItem('nghitts_worker_pool_size', this.poolSize);
+            // Re-initialize workers if a model is already loaded
+            if (this.currentModelName) {
+                this.init(this.currentModelName);
+            }
+        }
     }
 
     init(modelName) {
+        this.currentModelName = modelName;
         this.terminateAll();
         for (let i = 0; i < this.poolSize; i++) {
             const workerUrl = import.meta.url.replace('index.js', 'worker.js');
@@ -161,7 +175,7 @@ class WorkerPool {
     }
 }
 
-const workerPool = new WorkerPool(2); // Use 2 workers for parallel generation
+const workerPool = new WorkerPool();
 
 const NGHITTS_API = 'https://nghitts.app/api';
 
@@ -193,6 +207,17 @@ async function initUI() {
                 localStorage.setItem('nghitts_last_voice', currentModel);
                 initWorker(currentModel);
             }
+        });
+        $('#nghitts_speed').on('input', function() {
+            currentSpeed = parseFloat($(this).val());
+            $('#nghitts_speed_val').text(currentSpeed.toFixed(1));
+        });
+        
+        // Initialize workers input value
+        $('#nghitts_workers').val(workerPool.poolSize);
+        $('#nghitts_workers').on('change', function() {
+            workerPool.setPoolSize($(this).val());
+            toastr?.success(`Đã đổi số lượng Worker thành ${workerPool.poolSize}`);
         });
         $('#nghitts_test_btn').on('click', async function() {
             const text = $('#nghitts_test_text').val() || "Xin chào, đây là giọng nói từ Nghi TTS.";
