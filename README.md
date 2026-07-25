@@ -22,11 +22,14 @@ Tất cả quá trình tạo giọng nói đều diễn ra hoàn toàn **Offline
 
 ## 💡 Nguồn gốc Ý tưởng (Credits)
 
-Tiện ích này được lấy cảm hứng và xây dựng dựa trên nền tảng của:
-- **[Piper TTS](https://github.com/rhasspy/piper)**: Mô hình Text-to-Speech mã nguồn mở siêu nhanh, nhẹ và chất lượng cao do Rhasspy phát triển.
-- **[piper-tts-web](https://github.com/huggingface/piper-tts-web)**: Bản port của Piper TTS lên trình duyệt sử dụng `onnxruntime-web` (WebAssembly), chứng minh tiềm năng của việc chạy các mô hình AI ngôn ngữ ngay trên tab trình duyệt mà không cần Backend.
+Dự án này được học hỏi và xây dựng trực tiếp dựa trên mã nguồn gốc của:
+- **[NghiTTS](https://github.com/nghimestudio/nghitts)** (bởi Nghime Studio): Nền tảng gốc của dự án này, cung cấp giải pháp Text-to-Speech Tiếng Việt siêu mượt mà chạy trực tiếp trên trình duyệt. Phiên bản Extension này được "bê" nguyên phần cốt lõi từ kho lưu trữ của NghiTTS và tùy biến lại để hoạt động như một tiện ích nhúng hoàn hảo cho SillyTavern.
 
-Dự án NghiTTS đã kế thừa tinh hoa của `piper-tts-web`, tái cấu trúc toàn bộ luồng xử lý Audio Context, xây dựng thêm hệ thống đa luồng (Worker Pool) và bộ phân tách/dịch thuật ngôn ngữ Tiếng Việt để tương thích hoàn hảo với môi trường Roleplay đặc thù của **SillyTavern**.
+Ngoài ra, công nghệ lõi bên dưới được lấy cảm hứng và kế thừa từ:
+- **[Piper TTS](https://github.com/rhasspy/piper)**: Mô hình Text-to-Speech mã nguồn mở siêu nhanh do Rhasspy phát triển.
+- **[piper-tts-web](https://github.com/huggingface/piper-tts-web)**: Bản port của Piper TTS lên trình duyệt sử dụng `onnxruntime-web` (WebAssembly).
+
+Bản mod này đã tinh chỉnh lại luồng xử lý Audio Context, xây dựng thêm hệ thống đa luồng (Worker Pool) và bộ phân tách/dịch thuật ngôn ngữ Tiếng Việt để tương thích hoàn hảo với môi trường Roleplay đặc thù của **SillyTavern**.
 
 ## 🛠 Hướng dẫn Cài đặt & Sử dụng
 
