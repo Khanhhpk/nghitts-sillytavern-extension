@@ -1,0 +1,295 @@
+// src/utils/model-cache.js
+var ModelCache = class {
+  constructor() {
+    this.dbName = "piper-tts-cache";
+    this.storeName = "models";
+    this.version = 2;
+    this.db = null;
+  }
+  async init() {
+    if (this.db) return this.db;
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.version);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName, { keyPath: "url" });
+        }
+      };
+    });
+  }
+  async get(url) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], "readonly");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.get(url);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result.data);
+        } else {
+          resolve(null);
+        }
+      };
+    });
+  }
+  async set(url, data) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], "readwrite");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put({
+        url,
+        data,
+        timestamp: Date.now()
+      });
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+  async checkExists(url) {
+    const data = await this.get(url);
+    return data !== null;
+  }
+};
+var globalCache = new ModelCache();
+async function downloadModelToCache(url, onProgress) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const contentLength = response.headers.get("content-length");
+    const total = contentLength ? parseInt(contentLength, 10) : 0;
+    let loaded = 0;
+    const reader = response.body.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      if (onProgress && total) {
+        onProgress(loaded, total);
+      }
+    }
+    const arrayBuffer = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+      arrayBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    await globalCache.set(url, arrayBuffer.buffer);
+    return true;
+  } catch (e) {
+    console.error("Error downloading model", e);
+    return false;
+  }
+}
+async function checkModelInCache(url) {
+  return await globalCache.checkExists(url);
+}
+
+// src/index.js
+var worker = null;
+var voicesList = [];
+var modelsList = [];
+var currentModel = "";
+var currentSpeed = 1;
+var NGHITTS_API = "https://nghitts.app/api";
+async function initUI() {
+  const htmlResponse = await fetch(import.meta.url.replace("index.js", "index.html"));
+  const html = await htmlResponse.text();
+  const cssUrl = import.meta.url.replace("index.js", "style.css");
+  $("head").append(`<link rel="stylesheet" href="${cssUrl}">`);
+  $("#extensions_settings").append(html);
+  $("#nghitts_refresh_btn").on("click", fetchModelsList);
+  $("#nghitts_model").on("change", onModelChange);
+  $("#nghitts_download_btn").on("click", downloadSelectedModel);
+  $("#nghitts_speed").on("input", function() {
+    currentSpeed = parseFloat($(this).val());
+    $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
+  });
+  $("#nghitts_test_btn").on("click", async function() {
+    const text = $("#nghitts_test_text").val().trim();
+    const voiceId = $("#nghitts_voice").val();
+    if (!text) {
+      toastr?.info("Vui l\xF2ng nh\u1EADp v\u0103n b\u1EA3n \u0111\u1EC3 test.");
+      return;
+    }
+    if (!voiceId) {
+      toastr?.error("Ch\u01B0a t\u1EA3i ho\u1EB7c ch\u01B0a ch\u1ECDn Voice.");
+      return;
+    }
+    const $btn = $(this);
+    $btn.prop("disabled", true).text("Generating...");
+    try {
+      const audioUrl = await generateTTS(text, voiceId);
+      const audio = new Audio(audioUrl);
+      audio.play();
+      audio.onended = () => URL.revokeObjectURL(audioUrl);
+    } catch (e) {
+      console.error("Test TTS Error:", e);
+    } finally {
+      $btn.prop("disabled", false).text("Test Audio");
+    }
+  });
+  await fetchModelsList();
+}
+async function fetchModelsList() {
+  try {
+    const response = await fetch(`${NGHITTS_API}/models`);
+    const data = await response.json();
+    modelsList = data.models || [];
+    const $select = $("#nghitts_model");
+    $select.empty();
+    modelsList.forEach((m) => {
+      $select.append($("<option>", { value: m, text: m }));
+    });
+    if (modelsList.length > 0) {
+      $select.val(modelsList[0]);
+      await onModelChange();
+    }
+  } catch (e) {
+    console.error("NghiTTS: Failed to fetch models", e);
+  }
+}
+async function onModelChange() {
+  currentModel = $("#nghitts_model").val();
+  if (!currentModel) return;
+  const encodedModel = encodeURIComponent(currentModel);
+  const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
+  const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
+  $("#nghitts_download_status").text("Checking cache...");
+  $("#nghitts_download_btn").hide();
+  const hasModel = await checkModelInCache(modelUrl);
+  const hasConfig = await checkModelInCache(configUrl);
+  if (hasModel && hasConfig) {
+    $("#nghitts_download_status").text("Cached Locally (Ready)");
+    $("#nghitts_download_status").css("color", "green");
+    initWorker(currentModel);
+  } else {
+    $("#nghitts_download_status").text("Not Downloaded");
+    $("#nghitts_download_status").css("color", "red");
+    $("#nghitts_download_btn").show();
+    $("#nghitts_voice").empty();
+    if (worker) {
+      worker.terminate();
+      worker = null;
+    }
+  }
+}
+async function downloadSelectedModel() {
+  if (!currentModel) return;
+  const $btn = $("#nghitts_download_btn");
+  const $status = $("#nghitts_download_status");
+  $btn.prop("disabled", true);
+  const encodedModel = encodeURIComponent(currentModel);
+  const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
+  const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
+  try {
+    $status.text("Downloading config...");
+    await downloadModelToCache(configUrl);
+    $status.text("Downloading model... (0%)");
+    await downloadModelToCache(modelUrl, (loaded, total) => {
+      const pct = Math.round(loaded / total * 100);
+      $status.text(`Downloading model... (${pct}%)`);
+    });
+    $status.text("Cached Locally (Ready)");
+    $status.css("color", "green");
+    $btn.hide();
+    initWorker(currentModel);
+  } catch (e) {
+    console.error(e);
+    $status.text("Download failed");
+    $status.css("color", "red");
+  } finally {
+    $btn.prop("disabled", false);
+  }
+}
+function initWorker(modelName) {
+  if (worker) {
+    worker.terminate();
+  }
+  const workerUrl = import.meta.url.replace("index.js", "worker.js");
+  worker = new Worker(workerUrl, { type: "module" });
+  worker.postMessage({
+    type: "init",
+    model: modelName,
+    baseUrl: NGHITTS_API
+  });
+  worker.onmessage = (e) => {
+    const { status, voices, audio, chunk, data } = e.data;
+    if (status === "ready") {
+      voicesList = voices || [];
+      updateVoicesDropdown();
+    } else if (status === "error") {
+      console.error("NghiTTS Worker Error:", data);
+    } else if (status === "complete" && audio) {
+      handleAudioComplete(audio);
+    } else if (status === "stream" && chunk) {
+    }
+  };
+}
+function updateVoicesDropdown() {
+  const $select = $("#nghitts_voice");
+  $select.empty();
+  voicesList.forEach((v) => {
+    $select.append($("<option>", { value: v.id, text: v.name }));
+  });
+}
+var generationResolve = null;
+function handleAudioComplete(audioBlob) {
+  if (generationResolve) {
+    const url = URL.createObjectURL(audioBlob);
+    generationResolve(url);
+    generationResolve = null;
+  }
+}
+async function generateTTS(text, voiceId) {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      toastr.error("NghiTTS model not loaded or cached.");
+      return reject("Model not loaded");
+    }
+    generationResolve = resolve;
+    worker.postMessage({
+      type: "generate",
+      text,
+      voice: voiceId,
+      speed: currentSpeed
+    });
+  });
+}
+var providerInfo = {
+  name: "nghitts_wasm",
+  displayName: "NghiTTS (Local WASM)",
+  fetchTtsGeneration: async (text, voiceId) => {
+    const audioUrl = await generateTTS(text, voiceId);
+    const audio = new Audio(audioUrl);
+    audio.play();
+    return new Promise((r) => audio.onended = () => {
+      URL.revokeObjectURL(audioUrl);
+      r();
+    });
+  }
+};
+jQuery(async () => {
+  await initUI();
+  try {
+    const ttsModule = await import("../../tts/index.js");
+    if (ttsModule && ttsModule.registerTTSProvider) {
+      ttsModule.registerTTSProvider("nghitts", providerInfo);
+      console.log("NghiTTS: Registered with ST TTS subsystem");
+    }
+  } catch (e) {
+    console.log("NghiTTS: Standard TTS module not found. Hooking fallback.", e);
+    window.NghiTTS = {
+      generate: generateTTS
+    };
+  }
+});

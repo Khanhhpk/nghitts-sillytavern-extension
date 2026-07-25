@@ -1,0 +1,43 @@
+<div class="nghitts-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>NghiTTS (Local WASM)</b>
+            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content" style="padding: 10px;">
+            <div class="flex-container">
+                <label for="nghitts_model">Model (Online List):</label>
+                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>
+                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>
+            </div>
+            
+            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">
+                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>
+                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>
+            </div>
+
+            <hr>
+
+            <div class="flex-container" style="margin-top: 10px;">
+                <label for="nghitts_voice">Voice (Speaker):</label>
+                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>
+            </div>
+            
+            <div class="flex-container" style="margin-top: 10px; align-items: center;">
+                <label for="nghitts_speed" style="width: 60px;">Speed:</label>
+                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">
+                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>
+            </div>
+
+            <hr>
+            
+            <div style="margin-top: 10px;">
+                <label for="nghitts_test_text">Test TTS:</label>
+                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nhập văn bản cần đọc..."></textarea>
+                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">
+                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

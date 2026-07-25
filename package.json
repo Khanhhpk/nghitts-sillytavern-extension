@@ -1,0 +1,18 @@
+{
+  "name": "nghitts-extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "esbuild": "^0.28.1",
+    "onnxruntime-web": "^1.27.0",
+    "phonemizer": "file:phonemizer-1.2.2.tgz"
+  }
+}
