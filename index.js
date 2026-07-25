@@ -2121,7 +2121,7 @@ jQuery(async () => {
   await initUI();
   injectDedicatedUI();
   try {
-    const ttsModule = await import("../../tts/index.js");
+    const ttsModule = await import("../tts/index.js");
     if (ttsModule && ttsModule.registerTTSProvider) {
       ttsModule.registerTTSProvider("nghitts", providerInfo);
       console.log("[NghiTTS] Registered with ST TTS subsystem");
@@ -2183,29 +2183,11 @@ function addPlayButtonToMessage(mesElement) {
   }
 }
 function injectDedicatedUI() {
-  $(".mes:not(:has(.nghitts-play-btn))").each(function() {
-    addPlayButtonToMessage(this);
-  });
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) {
-          const $node = $(node);
-          if ($node.hasClass("mes")) {
-            addPlayButtonToMessage(node);
-          } else {
-            $node.find(".mes").each(function() {
-              addPlayButtonToMessage(this);
-            });
-          }
-        }
-      });
+  setInterval(() => {
+    $(".mes:visible:not(:has(.nghitts-play-btn))").each(function() {
+      addPlayButtonToMessage(this);
     });
-  });
-  const chatElement = document.getElementById("chat");
-  if (chatElement) {
-    observer.observe(chatElement, { childList: true, subtree: true });
-  }
+  }, 1e3);
   const checkInterval = setInterval(() => {
     const $sendControls = $("#send_controls");
     const $sendForm = $("#send_form");

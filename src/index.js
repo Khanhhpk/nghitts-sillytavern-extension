@@ -549,7 +549,7 @@ jQuery(async () => {
     injectDedicatedUI();
     
     try {
-        const ttsModule = await import('../../tts/index.js');
+        const ttsModule = await import('../tts/index.js');
         if (ttsModule && ttsModule.registerTTSProvider) {
             ttsModule.registerTTSProvider('nghitts', providerInfo);
             console.log("[NghiTTS] Registered with ST TTS subsystem");
@@ -631,33 +631,13 @@ function addPlayButtonToMessage(mesElement) {
 }
 
 function injectDedicatedUI() {
-    // 1. Inject into existing messages
-    $('.mes:not(:has(.nghitts-play-btn))').each(function() {
-        addPlayButtonToMessage(this);
-    });
-    
-    // 2. Observe new messages
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === 1) {
-                    const $node = $(node);
-                    if ($node.hasClass('mes')) {
-                        addPlayButtonToMessage(node);
-                    } else {
-                        $node.find('.mes').each(function() {
-                            addPlayButtonToMessage(this);
-                        });
-                    }
-                }
-            });
+    // 1. Inject into existing and future messages using a reliable interval
+    // This handles cases where ST re-renders message contents (swipes, edits)
+    setInterval(() => {
+        $('.mes:visible:not(:has(.nghitts-play-btn))').each(function() {
+            addPlayButtonToMessage(this);
         });
-    });
-    
-    const chatElement = document.getElementById('chat');
-    if (chatElement) {
-        observer.observe(chatElement, { childList: true, subtree: true });
-    }
+    }, 1000);
     
     // 3. Inject Quick Play into input bar
     const checkInterval = setInterval(() => {
