@@ -377,9 +377,9 @@ export function cleanTextForTTS(text) {
         // Remove non-Latin characters (keep basic Latin, Latin Extended, Vietnamese characters, numbers, punctuation, and whitespace)
         // Replaced with a space to prevent words from sticking together (e.g. đó——vậy -> đó vậy)
         .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ')
-        // Clean up redundant commas and spaces created by the replacements
-        .replace(/\s*,\s*(,\s*)+/g, ', ')
-        .replace(/\s+/g, ' ');
+        // Clean up redundant commas and spaces created by the replacements (preserving newlines)
+        .replace(/[ \t]*,[ \t]*(,[ \t]*)+/g, ', ')
+        .replace(/[ \t]+/g, ' ');
     return cleanedText.trim();
 }
 
