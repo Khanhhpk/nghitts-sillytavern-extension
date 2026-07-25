@@ -13,7 +13,7 @@ class VnLanguageDetector {
         // Phụ âm đầu hợp lệ của Tiếng Việt (bao gồm cả đơn và ghép)
         this.vnOnsets = new Set([
             'b', 'c', 'd', 'đ', 'g', 'h', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'x',
-            'ch', 'gh', 'gi', 'kh', 'ng', 'nh', 'ph', 'qu', 'th', 'tr'
+            'ch', 'gh', 'gi', 'kh', 'ng', 'ngh', 'nh', 'ph', 'qu', 'th', 'tr'
         ]);
 
         // Phụ âm cuối hợp lệ của Tiếng Việt

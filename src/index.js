@@ -507,10 +507,12 @@ function initAdvancedSettingsUI() {
             $content.append('<div style="text-align: center; color: var(--grey_text);">Không có nội dung.</div>');
         } else {
             finalChunks.forEach((c, idx) => {
+                // Escape HTML so <PARAGRAPH_BREAK> is visible
+                const escapedText = $('<div>').text(c).html();
                 $content.append(`
                     <div style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; border-left: 3px solid var(--SmartThemeQuoteColor);">
                         <div style="font-size: 0.8em; color: var(--grey_text); margin-bottom: 3px;">Chunk #${idx + 1}</div>
-                        <div>${c}</div>
+                        <div>${escapedText}</div>
                     </div>
                 `);
             });
