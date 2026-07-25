@@ -130,6 +130,36 @@ var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
 var pendingTasks = /* @__PURE__ */ new Map();
+var currentAudio = null;
+var currentAudioResolve = null;
+function playAudioWithOverlapPrevention(audioUrl) {
+  return new Promise((resolve) => {
+    if (currentAudio) {
+      currentAudio.pause();
+      if (currentAudioResolve) {
+        currentAudioResolve();
+      }
+    }
+    currentAudio = new Audio(audioUrl);
+    currentAudioResolve = resolve;
+    currentAudio.onended = () => {
+      URL.revokeObjectURL(audioUrl);
+      if (currentAudioResolve === resolve) {
+        currentAudio = null;
+        currentAudioResolve = null;
+      }
+      resolve();
+    };
+    currentAudio.onerror = () => {
+      console.error("Audio playback error");
+      resolve();
+    };
+    currentAudio.play().catch((e) => {
+      console.error("Audio play failed:", e);
+      resolve();
+    });
+  });
+}
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
   console.log("[NghiTTS] Initializing UI...");
@@ -167,9 +197,8 @@ async function initUI() {
       $btn.prop("disabled", true).text("Generating...");
       try {
         const audioUrl = await generateTTS(text, voiceId);
-        const audio = new Audio(audioUrl);
-        audio.play();
-        audio.onended = () => URL.revokeObjectURL(audioUrl);
+        $btn.text("Playing...");
+        await playAudioWithOverlapPrevention(audioUrl);
       } catch (e) {
         console.error("Test TTS Error:", e);
       } finally {
@@ -360,12 +389,17 @@ var providerInfo = {
   },
   fetchTtsGeneration: async (text, voiceId) => {
     const audioUrl = await generateTTS(text, 0);
-    const audio = new Audio(audioUrl);
-    audio.play();
-    return new Promise((r) => audio.onended = () => {
-      URL.revokeObjectURL(audioUrl);
-      r();
-    });
+    await playAudioWithOverlapPrevention(audioUrl);
+  },
+  onStopTts: () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      if (currentAudioResolve) {
+        currentAudioResolve();
+      }
+      currentAudio = null;
+      currentAudioResolve = null;
+    }
   }
 };
 jQuery(async () => {

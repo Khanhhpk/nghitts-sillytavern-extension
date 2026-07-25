@@ -12,6 +12,42 @@ let currentModel = '';
 let currentSpeed = 1.0;
 const pendingTasks = new Map();
 
+let currentAudio = null;
+let currentAudioResolve = null;
+
+function playAudioWithOverlapPrevention(audioUrl) {
+    return new Promise((resolve) => {
+        if (currentAudio) {
+            currentAudio.pause();
+            if (currentAudioResolve) {
+                currentAudioResolve(); // Unblock previous task
+            }
+        }
+        
+        currentAudio = new Audio(audioUrl);
+        currentAudioResolve = resolve;
+        
+        currentAudio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            if (currentAudioResolve === resolve) {
+                currentAudio = null;
+                currentAudioResolve = null;
+            }
+            resolve();
+        };
+        
+        currentAudio.onerror = () => {
+            console.error("Audio playback error");
+            resolve();
+        };
+        
+        currentAudio.play().catch(e => {
+            console.error("Audio play failed:", e);
+            resolve();
+        });
+    });
+}
+
 const NGHITTS_API = 'https://nghitts.app/api';
 
 async function initUI() {
@@ -56,9 +92,8 @@ async function initUI() {
             $btn.prop('disabled', true).text('Generating...');
             try {
                 const audioUrl = await generateTTS(text, voiceId);
-                const audio = new Audio(audioUrl);
-                audio.play();
-                audio.onended = () => URL.revokeObjectURL(audioUrl);
+                $btn.text('Playing...');
+                await playAudioWithOverlapPrevention(audioUrl);
             } catch (e) {
                 console.error("Test TTS Error:", e);
             } finally {
@@ -302,12 +337,17 @@ const providerInfo = {
         // We ignore the voiceId from ST since our model IS the voice 
         // (but we pass 0 internally)
         const audioUrl = await generateTTS(text, 0);
-        const audio = new Audio(audioUrl);
-        audio.play();
-        return new Promise(r => audio.onended = () => {
-            URL.revokeObjectURL(audioUrl);
-            r();
-        });
+        await playAudioWithOverlapPrevention(audioUrl);
+    },
+    onStopTts: () => {
+        if (currentAudio) {
+            currentAudio.pause();
+            if (currentAudioResolve) {
+                currentAudioResolve();
+            }
+            currentAudio = null;
+            currentAudioResolve = null;
+        }
     }
 };
 
