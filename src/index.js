@@ -563,27 +563,22 @@ jQuery(async () => {
 // -----------------------------------------------------------------------
 // Dedicated UI Injection (Standalone Buttons)
 // -----------------------------------------------------------------------
-let currentPlayingBtn = null;
+let currentPlayingText = null;
 
-async function playTextWithNghiTTS(text, $btn) {
-    // If this button is already playing, stop it
-    if (currentPlayingBtn === $btn[0] && (audioStreamer.isPlaying || audioStreamer.isGenerating)) {
+async function playTextWithNghiTTS(text) {
+    // If already playing this exact text, stop it
+    if ((audioStreamer.isPlaying || audioStreamer.isGenerating) && currentPlayingText === text) {
         audioStreamer.stop();
-        resetBtnState($btn);
+        currentPlayingText = null;
+        updateAllButtonsState();
         return;
     }
     
     // Stop any current audio
     audioStreamer.stop();
-    if (currentPlayingBtn) {
-        resetBtnState($(currentPlayingBtn));
-    }
     
-    currentPlayingBtn = $btn[0];
-    
-    // Visual feedback: Loading/Playing
-    $btn.find('i').removeClass('fa-volume-high').addClass('fa-circle-stop');
-    $btn.css('color', '#4CAF50'); // green to indicate active
+    currentPlayingText = text;
+    updateAllButtonsState();
     
     const voiceId = $('#nghitts_voice').val();
     
@@ -594,16 +589,34 @@ async function playTextWithNghiTTS(text, $btn) {
     } catch (e) {
         console.error("NghiTTS Play Error:", e);
     } finally {
-        if (currentPlayingBtn === $btn[0]) {
-            resetBtnState($btn);
-            currentPlayingBtn = null;
+        if (currentPlayingText === text) {
+            currentPlayingText = null;
+            updateAllButtonsState();
         }
     }
 }
 
-function resetBtnState($btn) {
-    $btn.find('i').removeClass('fa-circle-stop').addClass('fa-volume-high');
-    $btn.css('color', '');
+function updateAllButtonsState() {
+    const isPlaying = audioStreamer.isPlaying || audioStreamer.isGenerating;
+    
+    $('.nghitts-play-btn, #nghitts_quick_play').each(function() {
+        const $this = $(this);
+        let btnText = '';
+        if ($this.attr('id') === 'nghitts_quick_play') {
+            btnText = $('.mes:visible .mes_text').last().text();
+        } else {
+            btnText = $this.closest('.mes').find('.mes_text').text();
+        }
+        
+        const $i = $this.find('i');
+        if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
+            $i.removeClass('fa-volume-high').addClass('fa-circle-stop');
+            $this.css('color', '#4CAF50'); // green active
+        } else {
+            $i.removeClass('fa-circle-stop').addClass('fa-volume-high');
+            $this.css('color', '');
+        }
+    });
 }
 
 function addPlayButtonToMessage(mesElement) {
@@ -618,7 +631,7 @@ function addPlayButtonToMessage(mesElement) {
     $btn.on('click', function(e) {
         e.stopPropagation();
         const text = $mes.find('.mes_text').text();
-        playTextWithNghiTTS(text, $btn);
+        playTextWithNghiTTS(text);
     });
     
     const $buttons = $mes.find('.mes_buttons');
@@ -637,6 +650,8 @@ function injectDedicatedUI() {
         $('.mes:visible:not(:has(.nghitts-play-btn))').each(function() {
             addPlayButtonToMessage(this);
         });
+        // Also keep states in sync dynamically
+        updateAllButtonsState();
     }, 1000);
     
     // 3. Inject Quick Play into input bar
@@ -656,7 +671,7 @@ function injectDedicatedUI() {
                 // Find last message text (exclude swipes/hidden)
                 const $lastMes = $('.mes:visible .mes_text').last();
                 if ($lastMes.length > 0) {
-                    playTextWithNghiTTS($lastMes.text(), $btn);
+                    playTextWithNghiTTS($lastMes.text());
                 }
             });
             

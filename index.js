@@ -2131,20 +2131,17 @@ jQuery(async () => {
     window.NghiTTS = { generate: generateTTS };
   }
 });
-var currentPlayingBtn = null;
-async function playTextWithNghiTTS(text, $btn) {
-  if (currentPlayingBtn === $btn[0] && (audioStreamer.isPlaying || audioStreamer.isGenerating)) {
+var currentPlayingText = null;
+async function playTextWithNghiTTS(text) {
+  if ((audioStreamer.isPlaying || audioStreamer.isGenerating) && currentPlayingText === text) {
     audioStreamer.stop();
-    resetBtnState($btn);
+    currentPlayingText = null;
+    updateAllButtonsState();
     return;
   }
   audioStreamer.stop();
-  if (currentPlayingBtn) {
-    resetBtnState($(currentPlayingBtn));
-  }
-  currentPlayingBtn = $btn[0];
-  $btn.find("i").removeClass("fa-volume-high").addClass("fa-circle-stop");
-  $btn.css("color", "#4CAF50");
+  currentPlayingText = text;
+  updateAllButtonsState();
   const voiceId = $("#nghitts_voice").val();
   try {
     await new Promise((resolve, reject) => {
@@ -2153,15 +2150,31 @@ async function playTextWithNghiTTS(text, $btn) {
   } catch (e) {
     console.error("NghiTTS Play Error:", e);
   } finally {
-    if (currentPlayingBtn === $btn[0]) {
-      resetBtnState($btn);
-      currentPlayingBtn = null;
+    if (currentPlayingText === text) {
+      currentPlayingText = null;
+      updateAllButtonsState();
     }
   }
 }
-function resetBtnState($btn) {
-  $btn.find("i").removeClass("fa-circle-stop").addClass("fa-volume-high");
-  $btn.css("color", "");
+function updateAllButtonsState() {
+  const isPlaying = audioStreamer.isPlaying || audioStreamer.isGenerating;
+  $(".nghitts-play-btn, #nghitts_quick_play").each(function() {
+    const $this = $(this);
+    let btnText = "";
+    if ($this.attr("id") === "nghitts_quick_play") {
+      btnText = $(".mes:visible .mes_text").last().text();
+    } else {
+      btnText = $this.closest(".mes").find(".mes_text").text();
+    }
+    const $i = $this.find("i");
+    if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
+      $i.removeClass("fa-volume-high").addClass("fa-circle-stop");
+      $this.css("color", "#4CAF50");
+    } else {
+      $i.removeClass("fa-circle-stop").addClass("fa-volume-high");
+      $this.css("color", "");
+    }
+  });
 }
 function addPlayButtonToMessage(mesElement) {
   const $mes = $(mesElement);
@@ -2172,7 +2185,7 @@ function addPlayButtonToMessage(mesElement) {
   $btn.on("click", function(e) {
     e.stopPropagation();
     const text = $mes.find(".mes_text").text();
-    playTextWithNghiTTS(text, $btn);
+    playTextWithNghiTTS(text);
   });
   const $buttons = $mes.find(".mes_buttons");
   if ($buttons.length > 0) {
@@ -2187,6 +2200,7 @@ function injectDedicatedUI() {
     $(".mes:visible:not(:has(.nghitts-play-btn))").each(function() {
       addPlayButtonToMessage(this);
     });
+    updateAllButtonsState();
   }, 1e3);
   const checkInterval = setInterval(() => {
     const $sendControls = $("#send_controls");
@@ -2200,7 +2214,7 @@ function injectDedicatedUI() {
         e.stopPropagation();
         const $lastMes = $(".mes:visible .mes_text").last();
         if ($lastMes.length > 0) {
-          playTextWithNghiTTS($lastMes.text(), $btn);
+          playTextWithNghiTTS($lastMes.text());
         }
       });
       if ($("#send_but").length > 0) {
