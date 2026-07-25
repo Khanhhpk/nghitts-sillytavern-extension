@@ -1,0 +1,9 @@
+{
+    "display_name": "NghiTTS (Local WASM)",
+    "name": "nghitts-extension",
+    "description": "Local Vietnamese TTS running on WebAssembly",
+    "author": "Khanhhpk",
+    "version": "1.0.0",
+    "dependencies": [],
+    "require_node": false
+}
