@@ -1675,7 +1675,7 @@ async function chunkText(text) {
 }
 
 // src/index.html
-var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_workers" style="width: 60px;" title="S\u1ED1 worker ch\u1EA1y song song (1-8). T\u0103ng gi\xFAp x\u1EED l\xFD nhanh h\u01A1n nh\u01B0ng t\u1ED1n nhi\u1EC1u RAM.">Workers:</label>\n                <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">\n                <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(S\u1ED1 lu\u1ED3ng song song)</span>\n            </div>\n            \n            <div id="nghitts_worker_status_container" style="margin-top: 10px; font-size: 0.85em; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; border: 1px solid var(--SmartThemeBorderColor);">\n                <div style="font-weight: bold; margin-bottom: 5px; color: var(--grey_text);">Worker Status:</div>\n                <div id="nghitts_worker_list" style="display: flex; flex-direction: column; gap: 4px;">\n                    <!-- Worker status will be injected here -->\n                    <div style="color: var(--grey_text); font-style: italic;">Ch\u01B0a kh\u1EDFi t\u1EA1o</div>\n                </div>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px; gap: 10px;">\n                    <button id="nghitts_stop_test_btn" class="menu_button" style="display: none; background-color: var(--smartThemeDangerColor, #d9534f); color: white;">Stop TTS</button>\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
+var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_workers" style="width: 60px;" title="S\u1ED1 worker ch\u1EA1y song song (1-8). T\u0103ng gi\xFAp x\u1EED l\xFD nhanh h\u01A1n nh\u01B0ng t\u1ED1n nhi\u1EC1u RAM.">Workers:</label>\n                <input type="number" id="nghitts_workers" min="1" max="8" step="1" style="flex: 1; max-width: 60px;" class="text_pole">\n                <span style="font-size: 0.85em; color: var(--grey_text); margin-left: 10px;">(S\u1ED1 lu\u1ED3ng song song)</span>\n            </div>\n            \n            <div id="nghitts_worker_status_container" style="margin-top: 10px; font-size: 0.85em; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; border: 1px solid var(--SmartThemeBorderColor);">\n                <div style="font-weight: bold; margin-bottom: 5px; color: var(--grey_text);">Worker Status:</div>\n                <div id="nghitts_worker_list" style="display: flex; flex-direction: column; gap: 4px;">\n                    <!-- Worker status will be injected here -->\n                    <div style="color: var(--grey_text); font-style: italic;">Ch\u01B0a kh\u1EDFi t\u1EA1o</div>\n                </div>\n            </div>\n\n            <div style="margin-top: 10px; display: flex; justify-content: center;">\n                <button id="nghitts_advanced_btn" class="menu_button" style="width: 100%; border-radius: 5px; padding: 8px;">\n                    <i class="fa-solid fa-gear"></i> C\xE0i \u0111\u1EB7t N\xE2ng cao (T\u1EEB \u0111i\u1EC3n & Ng\u1EAFt ngh\u1EC9)\n                </button>\n            </div>\n            \n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px; gap: 10px;">\n                    <button id="nghitts_stop_test_btn" class="menu_button" style="display: none; background-color: var(--smartThemeDangerColor, #d9534f); color: white;">Stop TTS</button>\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n\n<!-- Dialog for Advanced Settings -->\n<dialog id="nghitts_advanced_modal" style="border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; background: var(--SmartThemeBlurTintColor); backdrop-filter: blur(20px); color: var(--SmartThemeBodyColor); padding: 20px; width: 90%; max-width: 800px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">\n    <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 10px;">C\xE0i \u0111\u1EB7t N\xE2ng cao NghiTTS</h3>\n    \n    <div style="display: flex; gap: 20px; flex-wrap: wrap;">\n        <!-- Dictionary Section -->\n        <div style="flex: 1; min-width: 300px;">\n            <h4>T\u1EEB \u0111i\u1EC3n Ph\xE1t \xE2m</h4>\n            <div style="font-size: 0.85em; color: var(--grey_text); margin-bottom: 10px;">V\xED d\u1EE5: <i>Mahiro -> Ma hi r\xF4</i></div>\n            \n            <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 5px; margin-bottom: 10px; padding: 5px;" id="nghitts_dict_list">\n                <!-- List items will be generated here -->\n            </div>\n            \n            <div style="display: flex; gap: 5px;">\n                <input type="text" id="nghitts_dict_word" placeholder="T\u1EEB g\u1ED1c (vd: Mahiro)" class="text_pole" style="flex: 1; width: 100%;">\n                <input type="text" id="nghitts_dict_pron" placeholder="C\xE1ch \u0111\u1ECDc (vd: Ma hi r\xF4)" class="text_pole" style="flex: 1; width: 100%;">\n                <button id="nghitts_dict_add" class="menu_button fa-solid fa-plus"></button>\n            </div>\n        </div>\n\n        <!-- Pauses Section -->\n        <div style="flex: 1; min-width: 300px;">\n            <h4>T\xF9y ch\u1EC9nh Ng\u1EAFt ngh\u1EC9</h4>\n            <div style="font-size: 0.85em; color: var(--grey_text); margin-bottom: 10px;">V\xED d\u1EE5: <i>~ -> 1.5 (gi\xE2y)</i></div>\n            \n            <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 5px; margin-bottom: 10px; padding: 5px;" id="nghitts_pause_list">\n                <!-- List items will be generated here -->\n            </div>\n            \n            <div style="display: flex; gap: 5px;">\n                <input type="text" id="nghitts_pause_symbol" placeholder="K\xFD hi\u1EC7u (vd: ~)" class="text_pole" style="flex: 1; width: 100%;">\n                <input type="number" id="nghitts_pause_time" placeholder="Th\u1EDDi gian (gi\xE2y)" min="0" step="0.1" class="text_pole" style="flex: 1; width: 100%;">\n                <button id="nghitts_pause_add" class="menu_button fa-solid fa-plus"></button>\n            </div>\n        </div>\n    </div>\n    \n    <div style="text-align: right; margin-top: 20px;">\n        <button id="nghitts_advanced_close" class="menu_button">\u0110\xF3ng l\u1EA1i</button>\n    </div>\n</dialog>\n';
 
 // src/style.css
 var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
@@ -1687,6 +1687,8 @@ var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
 var pendingTasks = /* @__PURE__ */ new Map();
+var nghittsDictionary = JSON.parse(localStorage.getItem("nghitts_dictionary") || "[]");
+var nghittsPauses = JSON.parse(localStorage.getItem("nghitts_pauses") || "[]");
 var AudioStreamer = class {
   constructor() {
     this.audioContext = null;
@@ -1720,11 +1722,11 @@ var AudioStreamer = class {
     this.totalChunksExpected = 0;
     this.chunksCompletedCount = 0;
   }
-  addChunkData(taskId, sequenceId, audioData, sampleRate) {
+  addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
     if (taskId !== this.currentTaskId) return;
     let seqObj = this.pendingChunks.get(sequenceId);
     if (!seqObj) {
-      seqObj = { buffers: [], sampleRate, isComplete: false };
+      seqObj = { buffers: [], sampleRate, text, isComplete: false };
       this.pendingChunks.set(sequenceId, seqObj);
     }
     seqObj.buffers.push(audioData);
@@ -1747,7 +1749,7 @@ var AudioStreamer = class {
       const seqObj = this.pendingChunks.get(this.expectedSequenceId);
       if (seqObj && seqObj.isComplete) {
         for (const audioData of seqObj.buffers) {
-          this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId);
+          this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, seqObj.text);
         }
         this.pendingChunks.delete(this.expectedSequenceId);
         this.expectedSequenceId++;
@@ -1757,7 +1759,7 @@ var AudioStreamer = class {
     }
     this.checkCompletion();
   }
-  playAudioData(audioData, sampleRate, taskId) {
+  playAudioData(audioData, sampleRate, taskId, text) {
     if (!this.isPlaying || !this.audioContext || taskId !== this.currentTaskId) return;
     const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
     audioBuffer.getChannelData(0).set(audioData);
@@ -1770,7 +1772,16 @@ var AudioStreamer = class {
     }
     source.start(scheduleTime);
     this.sourceNodes.push(source);
-    this.nextStartTime = scheduleTime + audioBuffer.duration;
+    let extraPause = 0;
+    if (text) {
+      for (const p of nghittsPauses) {
+        if (text.endsWith(p.symbol)) {
+          extraPause = parseFloat(p.time) || 0;
+          break;
+        }
+      }
+    }
+    this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
     source.onended = () => {
       const idx = this.sourceNodes.indexOf(source);
       if (idx !== -1) {
@@ -1898,7 +1909,7 @@ var WorkerPool = class {
           worker.nghiState = "\u0110ang \u0111\u1ECDc...";
           updateWorkerStatusUI();
           if (taskId && pendingTasks.has(taskId)) {
-            audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate);
+            audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate, chunk.text);
           }
         }
       };
@@ -1995,11 +2006,92 @@ async function initUI() {
       currentModel = lastVoice;
     }
     await refreshCachedVoicesList();
+    initAdvancedSettingsUI();
     if (typeof toastr !== "undefined") {
       toastr.success("NghiTTS Extension Loaded!");
     }
   }
   injectUI();
+}
+function initAdvancedSettingsUI() {
+  $("#nghitts_advanced_btn").on("click", () => {
+    const modal = document.getElementById("nghitts_advanced_modal");
+    if (modal) {
+      renderDictionaryList();
+      renderPausesList();
+      modal.showModal();
+    }
+  });
+  $("#nghitts_advanced_close").on("click", () => {
+    const modal = document.getElementById("nghitts_advanced_modal");
+    if (modal) modal.close();
+  });
+  function renderDictionaryList() {
+    const $list = $("#nghitts_dict_list");
+    $list.empty();
+    if (nghittsDictionary.length === 0) {
+      $list.append('<div style="padding: 10px; text-align: center; color: var(--grey_text);">Ch\u01B0a c\xF3 t\u1EEB n\xE0o</div>');
+      return;
+    }
+    nghittsDictionary.forEach((item, idx) => {
+      $list.append(`
+                <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div style="flex: 1; word-break: break-all;"><b>${item.word}</b> \u2794 ${item.pron}</div>
+                    <button class="menu_button fa-solid fa-trash" style="padding: 2px 8px;" data-idx="${idx}"></button>
+                </div>
+            `);
+    });
+    $list.find(".fa-trash").on("click", function() {
+      const idx = $(this).data("idx");
+      nghittsDictionary.splice(idx, 1);
+      localStorage.setItem("nghitts_dictionary", JSON.stringify(nghittsDictionary));
+      renderDictionaryList();
+    });
+  }
+  $("#nghitts_dict_add").on("click", () => {
+    const word = $("#nghitts_dict_word").val().trim();
+    const pron = $("#nghitts_dict_pron").val().trim();
+    if (word && pron) {
+      nghittsDictionary.push({ word, pron });
+      localStorage.setItem("nghitts_dictionary", JSON.stringify(nghittsDictionary));
+      $("#nghitts_dict_word").val("");
+      $("#nghitts_dict_pron").val("");
+      renderDictionaryList();
+    }
+  });
+  function renderPausesList() {
+    const $list = $("#nghitts_pause_list");
+    $list.empty();
+    if (nghittsPauses.length === 0) {
+      $list.append('<div style="padding: 10px; text-align: center; color: var(--grey_text);">Ch\u01B0a c\xF3 tu\u1EF3 ch\u1EC9nh n\xE0o</div>');
+      return;
+    }
+    nghittsPauses.forEach((item, idx) => {
+      $list.append(`
+                <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div style="flex: 1; word-break: break-all;"><b>${item.symbol}</b> \u2794 ${item.time}s</div>
+                    <button class="menu_button fa-solid fa-trash" style="padding: 2px 8px;" data-idx="${idx}"></button>
+                </div>
+            `);
+    });
+    $list.find(".fa-trash").on("click", function() {
+      const idx = $(this).data("idx");
+      nghittsPauses.splice(idx, 1);
+      localStorage.setItem("nghitts_pauses", JSON.stringify(nghittsPauses));
+      renderPausesList();
+    });
+  }
+  $("#nghitts_pause_add").on("click", () => {
+    const symbol = $("#nghitts_pause_symbol").val().trim();
+    const time = $("#nghitts_pause_time").val().trim();
+    if (symbol && time) {
+      nghittsPauses.push({ symbol, time: parseFloat(time) || 0 });
+      localStorage.setItem("nghitts_pauses", JSON.stringify(nghittsPauses));
+      $("#nghitts_pause_symbol").val("");
+      $("#nghitts_pause_time").val("");
+      renderPausesList();
+    }
+  });
 }
 async function fetchModelsList() {
   try {
@@ -2125,7 +2217,15 @@ async function generateTTS(text, voiceId, resolve, reject) {
   pendingTasks.set(taskId, { resolve, reject });
   audioStreamer.startNewSession(resolve, taskId);
   try {
-    const processed = await processTextForTTS(text);
+    let dictText = text;
+    if (nghittsDictionary && nghittsDictionary.length > 0) {
+      nghittsDictionary.forEach((item) => {
+        if (item.word && item.pron) {
+          dictText = dictText.split(item.word).join(item.pron);
+        }
+      });
+    }
+    const processed = await processTextForTTS(dictText);
     const chunks = await chunkText(processed);
     if (chunks.length === 0) {
       audioStreamer.stop();

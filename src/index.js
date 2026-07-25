@@ -12,6 +12,8 @@ let modelsList = [];
 let currentModel = '';
 let currentSpeed = 1.0;
 const pendingTasks = new Map();
+let nghittsDictionary = JSON.parse(localStorage.getItem('nghitts_dictionary') || '[]');
+let nghittsPauses = JSON.parse(localStorage.getItem('nghitts_pauses') || '[]');
 
 class AudioStreamer {
     constructor() {
@@ -51,11 +53,11 @@ class AudioStreamer {
         this.chunksCompletedCount = 0;
     }
 
-    addChunkData(taskId, sequenceId, audioData, sampleRate) {
+    addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
         if (taskId !== this.currentTaskId) return;
         let seqObj = this.pendingChunks.get(sequenceId);
         if (!seqObj) {
-            seqObj = { buffers: [], sampleRate, isComplete: false };
+            seqObj = { buffers: [], sampleRate, text, isComplete: false };
             this.pendingChunks.set(sequenceId, seqObj);
         }
         seqObj.buffers.push(audioData);
@@ -83,7 +85,7 @@ class AudioStreamer {
             if (seqObj && seqObj.isComplete) {
                 // Play all buffers for this sequenceId
                 for (const audioData of seqObj.buffers) {
-                    this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId);
+                    this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, seqObj.text);
                 }
                 
                 // Remove from pending map to free memory
@@ -97,7 +99,7 @@ class AudioStreamer {
         this.checkCompletion();
     }
 
-    playAudioData(audioData, sampleRate, taskId) {
+    playAudioData(audioData, sampleRate, taskId, text) {
         if (!this.isPlaying || !this.audioContext || taskId !== this.currentTaskId) return;
 
         const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
@@ -119,7 +121,17 @@ class AudioStreamer {
         source.start(scheduleTime);
         this.sourceNodes.push(source);
 
-        this.nextStartTime = scheduleTime + audioBuffer.duration;
+        let extraPause = 0;
+        if (text) {
+            for (const p of nghittsPauses) {
+                if (text.endsWith(p.symbol)) {
+                    extraPause = parseFloat(p.time) || 0;
+                    break;
+                }
+            }
+        }
+
+        this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
 
         source.onended = () => {
             const idx = this.sourceNodes.indexOf(source);
@@ -263,7 +275,7 @@ class WorkerPool {
                     updateWorkerStatusUI();
                     
                     if (taskId && pendingTasks.has(taskId)) {
-                        audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate);
+                        audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate, chunk.text);
                     }
                 }
             };
@@ -389,12 +401,105 @@ async function initUI() {
 
         await refreshCachedVoicesList();
         
+        initAdvancedSettingsUI();
+        
         if (typeof toastr !== 'undefined') {
             toastr.success('NghiTTS Extension Loaded!');
         }
     }
     
     injectUI();
+}
+
+function initAdvancedSettingsUI() {
+    // Advanced Settings Button
+    $('#nghitts_advanced_btn').on('click', () => {
+        const modal = document.getElementById('nghitts_advanced_modal');
+        if (modal) {
+            renderDictionaryList();
+            renderPausesList();
+            modal.showModal();
+        }
+    });
+
+    $('#nghitts_advanced_close').on('click', () => {
+        const modal = document.getElementById('nghitts_advanced_modal');
+        if (modal) modal.close();
+    });
+
+    // Dictionary Logic
+    function renderDictionaryList() {
+        const $list = $('#nghitts_dict_list');
+        $list.empty();
+        if (nghittsDictionary.length === 0) {
+            $list.append('<div style="padding: 10px; text-align: center; color: var(--grey_text);">Chưa có từ nào</div>');
+            return;
+        }
+        nghittsDictionary.forEach((item, idx) => {
+            $list.append(`
+                <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div style="flex: 1; word-break: break-all;"><b>${item.word}</b> ➔ ${item.pron}</div>
+                    <button class="menu_button fa-solid fa-trash" style="padding: 2px 8px;" data-idx="${idx}"></button>
+                </div>
+            `);
+        });
+        
+        $list.find('.fa-trash').on('click', function() {
+            const idx = $(this).data('idx');
+            nghittsDictionary.splice(idx, 1);
+            localStorage.setItem('nghitts_dictionary', JSON.stringify(nghittsDictionary));
+            renderDictionaryList();
+        });
+    }
+
+    $('#nghitts_dict_add').on('click', () => {
+        const word = $('#nghitts_dict_word').val().trim();
+        const pron = $('#nghitts_dict_pron').val().trim();
+        if (word && pron) {
+            nghittsDictionary.push({ word, pron });
+            localStorage.setItem('nghitts_dictionary', JSON.stringify(nghittsDictionary));
+            $('#nghitts_dict_word').val('');
+            $('#nghitts_dict_pron').val('');
+            renderDictionaryList();
+        }
+    });
+
+    // Pauses Logic
+    function renderPausesList() {
+        const $list = $('#nghitts_pause_list');
+        $list.empty();
+        if (nghittsPauses.length === 0) {
+            $list.append('<div style="padding: 10px; text-align: center; color: var(--grey_text);">Chưa có tuỳ chỉnh nào</div>');
+            return;
+        }
+        nghittsPauses.forEach((item, idx) => {
+            $list.append(`
+                <div style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div style="flex: 1; word-break: break-all;"><b>${item.symbol}</b> ➔ ${item.time}s</div>
+                    <button class="menu_button fa-solid fa-trash" style="padding: 2px 8px;" data-idx="${idx}"></button>
+                </div>
+            `);
+        });
+        
+        $list.find('.fa-trash').on('click', function() {
+            const idx = $(this).data('idx');
+            nghittsPauses.splice(idx, 1);
+            localStorage.setItem('nghitts_pauses', JSON.stringify(nghittsPauses));
+            renderPausesList();
+        });
+    }
+
+    $('#nghitts_pause_add').on('click', () => {
+        const symbol = $('#nghitts_pause_symbol').val().trim();
+        const time = $('#nghitts_pause_time').val().trim();
+        if (symbol && time) {
+            nghittsPauses.push({ symbol, time: parseFloat(time) || 0 });
+            localStorage.setItem('nghitts_pauses', JSON.stringify(nghittsPauses));
+            $('#nghitts_pause_symbol').val('');
+            $('#nghitts_pause_time').val('');
+            renderPausesList();
+        }
+    });
 }
 
 async function fetchModelsList() {
@@ -558,7 +663,16 @@ async function generateTTS(text, voiceId, resolve, reject) {
     audioStreamer.startNewSession(resolve, taskId);
     
     try {
-        const processed = await processTextForTTS(text);
+        let dictText = text;
+        if (nghittsDictionary && nghittsDictionary.length > 0) {
+            nghittsDictionary.forEach(item => {
+                if (item.word && item.pron) {
+                    dictText = dictText.split(item.word).join(item.pron);
+                }
+            });
+        }
+        
+        const processed = await processTextForTTS(dictText);
         const chunks = await chunkText(processed);
         
         if (chunks.length === 0) {

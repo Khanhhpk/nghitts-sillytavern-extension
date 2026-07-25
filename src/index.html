@@ -43,6 +43,12 @@
                 </div>
             </div>
 
+            <div style="margin-top: 10px; display: flex; justify-content: center;">
+                <button id="nghitts_advanced_btn" class="menu_button" style="width: 100%; border-radius: 5px; padding: 8px;">
+                    <i class="fa-solid fa-gear"></i> Cài đặt Nâng cao (Từ điển & Ngắt nghỉ)
+                </button>
+            </div>
+            
             <hr>
             
             <div style="margin-top: 10px;">
@@ -56,3 +62,46 @@
         </div>
     </div>
 </div>
+
+<!-- Dialog for Advanced Settings -->
+<dialog id="nghitts_advanced_modal" style="border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; background: var(--SmartThemeBlurTintColor); backdrop-filter: blur(20px); color: var(--SmartThemeBodyColor); padding: 20px; width: 90%; max-width: 800px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+    <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 10px;">Cài đặt Nâng cao NghiTTS</h3>
+    
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- Dictionary Section -->
+        <div style="flex: 1; min-width: 300px;">
+            <h4>Từ điển Phát âm</h4>
+            <div style="font-size: 0.85em; color: var(--grey_text); margin-bottom: 10px;">Ví dụ: <i>Mahiro -> Ma hi rô</i></div>
+            
+            <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 5px; margin-bottom: 10px; padding: 5px;" id="nghitts_dict_list">
+                <!-- List items will be generated here -->
+            </div>
+            
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="nghitts_dict_word" placeholder="Từ gốc (vd: Mahiro)" class="text_pole" style="flex: 1; width: 100%;">
+                <input type="text" id="nghitts_dict_pron" placeholder="Cách đọc (vd: Ma hi rô)" class="text_pole" style="flex: 1; width: 100%;">
+                <button id="nghitts_dict_add" class="menu_button fa-solid fa-plus"></button>
+            </div>
+        </div>
+
+        <!-- Pauses Section -->
+        <div style="flex: 1; min-width: 300px;">
+            <h4>Tùy chỉnh Ngắt nghỉ</h4>
+            <div style="font-size: 0.85em; color: var(--grey_text); margin-bottom: 10px;">Ví dụ: <i>~ -> 1.5 (giây)</i></div>
+            
+            <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 5px; margin-bottom: 10px; padding: 5px;" id="nghitts_pause_list">
+                <!-- List items will be generated here -->
+            </div>
+            
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="nghitts_pause_symbol" placeholder="Ký hiệu (vd: ~)" class="text_pole" style="flex: 1; width: 100%;">
+                <input type="number" id="nghitts_pause_time" placeholder="Thời gian (giây)" min="0" step="0.1" class="text_pole" style="flex: 1; width: 100%;">
+                <button id="nghitts_pause_add" class="menu_button fa-solid fa-plus"></button>
+            </div>
+        </div>
+    </div>
+    
+    <div style="text-align: right; margin-top: 20px;">
+        <button id="nghitts_advanced_close" class="menu_button">Đóng lại</button>
+    </div>
+</dialog>
