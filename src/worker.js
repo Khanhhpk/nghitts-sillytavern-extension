@@ -80,7 +80,11 @@ async function processQueue() {
   
   while (messageQueue.length > 0) {
     const data = messageQueue.shift();
-    await handleMessage(data);
+    try {
+      await handleMessage(data);
+    } catch (err) {
+      console.error("Worker loop error:", err);
+    }
   }
   
   isProcessingQueue = false;
@@ -91,7 +95,7 @@ async function handleMessage(data) {
   
   // Handle initialization
   if (type === 'init') {
-    initPromise = initializeModel(e.data.model, e.data.baseUrl);
+    initPromise = initializeModel(data.model, data.baseUrl);
     await initPromise;
     return;
   }
