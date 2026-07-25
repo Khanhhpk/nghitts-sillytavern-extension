@@ -314,6 +314,18 @@ export class PiperTTS {
     
     // Process the text stream
     for await (const text of textStreamer) {
+      if (text === '<PARAGRAPH_BREAK>') {
+        if (this.voiceConfig) {
+          const sampleRate = this.voiceConfig.audio.sample_rate;
+          const silenceLength = Math.floor(sampleRate * 0.8); // 0.8 seconds pause for paragraphs
+          yield {
+            text: '',
+            audio: new RawAudio(new Float32Array(silenceLength), sampleRate)
+          };
+        }
+        continue;
+      }
+      
       if (text.trim()) {
         try {
           if (this.session && this.voiceConfig) {

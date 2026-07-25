@@ -499,7 +499,8 @@ export async function chunkText(text) {
     const chunks = [];
     const MAX_CHUNK_LENGTH = 100; // safe limit for Piper to prevent skipping
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         // Skip empty lines
         if (line.trim() === '') continue;
 
@@ -537,6 +538,11 @@ export async function chunkText(text) {
 
         if (currentChunk) {
             chunks.push(currentChunk);
+        }
+        
+        // Add a paragraph break if this is not the last line
+        if (i < lines.length - 1) {
+            chunks.push('<PARAGRAPH_BREAK>');
         }
     }
 
