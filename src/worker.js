@@ -94,19 +94,18 @@ self.addEventListener("message", async (e) => {
     speakerId, 
     lengthScale
   });
-  const chunks = [];
 
   try {
     for await (const { text, audio } of stream) {
       self.postMessage({
         status: "stream",
         chunk: {
-          audio: audio.toBlob(),
+          audio: audio.audio,
+          sampleRate: audio.sampling_rate,
           text,
         },
         taskId
       });
-      chunks.push(audio);
     }
   } catch (error) {
     console.error("Error during streaming:", error);
@@ -114,33 +113,7 @@ self.addEventListener("message", async (e) => {
     return;
   }
 
-  // Merge chunks
-  let audio;
-  if (chunks.length > 0) {
-    try {
-      const originalSamplingRate = chunks[0].sampling_rate;
-      const length = chunks.reduce((sum, chunk) => sum + chunk.audio.length, 0);
-      let waveform = new Float32Array(length);
-      let offset = 0;
-      for (const { audio } of chunks) {
-        waveform.set(audio, offset);
-        offset += audio.length;
-      }
-
-      // Normalize peaks & trim silence
-      normalizePeak(waveform, 1.0);
-
-      // Create a new merged RawAudio with the original sample rate
-      // @ts-expect-error - So that we don't need to import RawAudio
-      audio = new chunks[0].constructor(waveform, originalSamplingRate);
-    } catch (error) {
-      console.error("Error processing audio chunks:", error);
-      self.postMessage({ status: "error", data: error.message, taskId });
-      return;
-    }
-  }
-
-  self.postMessage({ status: "complete", audio: audio?.toBlob(), taskId });
+  self.postMessage({ status: "complete", taskId });
 });
 
 function normalizePeak(f32, target = 0.9) {

@@ -12,41 +12,156 @@ let currentModel = '';
 let currentSpeed = 1.0;
 const pendingTasks = new Map();
 
-let currentAudio = null;
-let currentAudioResolve = null;
-
-function playAudioWithOverlapPrevention(audioUrl) {
-    return new Promise((resolve) => {
-        if (currentAudio) {
-            currentAudio.pause();
-            if (currentAudioResolve) {
-                currentAudioResolve(); // Unblock previous task
-            }
+class AudioStreamer {
+    constructor() {
+        this.audioContext = null;
+        this.nextStartTime = 0;
+        this.isPlaying = false;
+        this.resolvePromise = null;
+        this.sourceNodes = [];
+    }
+    
+    startNewSession(resolve) {
+        this.stop();
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        
-        currentAudio = new Audio(audioUrl);
-        currentAudioResolve = resolve;
-        
-        currentAudio.onended = () => {
-            URL.revokeObjectURL(audioUrl);
-            if (currentAudioResolve === resolve) {
-                currentAudio = null;
-                currentAudioResolve = null;
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        this.nextStartTime = this.audioContext.currentTime + 0.05; // 50ms buffer
+        this.isPlaying = true;
+        this.resolvePromise = resolve;
+        this.sourceNodes = [];
+    }
+
+    queueFloat32Array(audioData, sampleRate) {
+        if (!this.isPlaying || !this.audioContext) return;
+
+        const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
+        audioBuffer.getChannelData(0).set(audioData);
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
+
+        const scheduleTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+        source.start(scheduleTime);
+        this.sourceNodes.push(source);
+
+        this.nextStartTime = scheduleTime + audioBuffer.duration;
+
+        source.onended = () => {
+            const idx = this.sourceNodes.indexOf(source);
+            if (idx !== -1) {
+                this.sourceNodes.splice(idx, 1);
             }
-            resolve();
         };
-        
-        currentAudio.onerror = () => {
-            console.error("Audio playback error");
-            resolve();
-        };
-        
-        currentAudio.play().catch(e => {
-            console.error("Audio play failed:", e);
-            resolve();
-        });
-    });
+    }
+
+    markComplete() {
+        if (!this.isPlaying) return;
+        const remainingTime = this.nextStartTime - this.audioContext.currentTime;
+        if (remainingTime > 0) {
+            setTimeout(() => {
+                if (this.isPlaying && this.resolvePromise) {
+                    this.resolvePromise();
+                    this.resolvePromise = null;
+                    this.isPlaying = false;
+                }
+            }, remainingTime * 1000);
+        } else {
+            if (this.resolvePromise) this.resolvePromise();
+            this.resolvePromise = null;
+            this.isPlaying = false;
+        }
+    }
+
+    stop() {
+        this.isPlaying = false;
+        for (const source of this.sourceNodes) {
+            try {
+                source.stop();
+            } catch (e) {}
+        }
+        this.sourceNodes = [];
+        if (this.resolvePromise) {
+            this.resolvePromise();
+            this.resolvePromise = null;
+        }
+    }
 }
+
+const audioStreamer = new AudioStreamer();
+
+class WorkerPool {
+    constructor(poolSize = 2) {
+        this.poolSize = poolSize;
+        this.workers = [];
+        this.currentWorkerIdx = 0;
+    }
+
+    init(modelName) {
+        this.terminateAll();
+        for (let i = 0; i < this.poolSize; i++) {
+            const workerUrl = import.meta.url.replace('index.js', 'worker.js');
+            const worker = new Worker(workerUrl, { type: 'module' });
+            worker.postMessage({ 
+                type: 'init', 
+                model: modelName,
+                baseUrl: NGHITTS_API
+            });
+            
+            worker.onmessage = (e) => {
+                const { status, voices, chunk, data, taskId } = e.data;
+                if (status === 'ready') {
+                    if (i === 0) { // Only update UI from the first worker
+                        voicesList = voices || [];
+                        updateVoicesDropdown();
+                    }
+                } else if (status === 'error') {
+                    console.error(`NghiTTS Worker ${i} Error:`, data);
+                    if (taskId && pendingTasks.has(taskId)) {
+                        pendingTasks.get(taskId).reject(new Error(data));
+                        pendingTasks.delete(taskId);
+                    }
+                } else if (status === 'complete') {
+                    if (taskId && pendingTasks.has(taskId)) {
+                        pendingTasks.get(taskId).resolve();
+                        pendingTasks.delete(taskId);
+                        audioStreamer.markComplete();
+                    }
+                } else if (status === 'stream' && chunk) {
+                    if (taskId && pendingTasks.has(taskId)) {
+                        audioStreamer.queueFloat32Array(chunk.audio, chunk.sampleRate);
+                    }
+                }
+            };
+            this.workers.push(worker);
+        }
+    }
+
+    terminateAll() {
+        for (const worker of this.workers) {
+            worker.terminate();
+        }
+        this.workers = [];
+        
+        for (const [taskId, task] of pendingTasks.entries()) {
+            task.reject(new Error("Worker terminated"));
+        }
+        pendingTasks.clear();
+    }
+
+    dispatch(message) {
+        if (this.workers.length === 0) return;
+        const worker = this.workers[this.currentWorkerIdx];
+        this.currentWorkerIdx = (this.currentWorkerIdx + 1) % this.poolSize;
+        worker.postMessage(message);
+    }
+}
+
+const workerPool = new WorkerPool(2); // Use 2 workers for parallel generation
 
 const NGHITTS_API = 'https://nghitts.app/api';
 
@@ -71,29 +186,25 @@ async function initUI() {
         $('#nghitts_model').on('change', onModelDropdownChange);
         $('#nghitts_download_btn').on('click', downloadSelectedModel);
         $('#nghitts_voice').on('change', onVoiceDropdownChange);
-        $('#nghitts_speed').on('input', function() {
-            currentSpeed = parseFloat($(this).val());
-            $('#nghitts_speed_val').text(currentSpeed.toFixed(1));
+        $('#nghitts_model').on('change', function() {
+            const selectedModel = $(this).val();
+            if (selectedModel && selectedModel !== '0') {
+                currentModel = selectedModel;
+                localStorage.setItem('nghitts_last_voice', currentModel);
+                initWorker(currentModel);
+            }
         });
-        
         $('#nghitts_test_btn').on('click', async function() {
-            const text = $('#nghitts_test_text').val().trim();
-            const voiceId = 0; // We always use internal voice 0 for the selected model
-            if (!text) {
-                toastr?.info("Vui lòng nhập văn bản để test.");
-                return;
-            }
-            if (!currentModel) {
-                toastr?.error("Chưa tải hoặc chưa chọn Voice.");
-                return;
-            }
+            const text = $('#nghitts_test_text').val() || "Xin chào, đây là giọng nói từ Nghi TTS.";
+            const voiceId = $('#nghitts_voice').val();
             
             const $btn = $(this);
             $btn.prop('disabled', true).text('Generating...');
             try {
-                const audioUrl = await generateTTS(text, voiceId);
-                $btn.text('Playing...');
-                await playAudioWithOverlapPrevention(audioUrl);
+                await new Promise((resolve, reject) => {
+                    audioStreamer.startNewSession(resolve);
+                    generateTTS(text, voiceId, resolve, reject);
+                });
             } catch (e) {
                 console.error("Test TTS Error:", e);
             } finally {
@@ -102,7 +213,17 @@ async function initUI() {
         });
         
         // Initially fetch lists
-        fetchModelsList();
+        await fetchModelsList();
+
+        // Restore last voice from memory and preload
+        const lastVoice = localStorage.getItem('nghitts_last_voice');
+        if (lastVoice) {
+            // Ensure the last voice is still in the list
+            const $modelDropdown = $('#nghitts_model');
+            if ($modelDropdown.find(`option[value="${lastVoice}"]`).length > 0) {
+                $modelDropdown.val(lastVoice).trigger('change');
+            }
+        }
         refreshCachedVoicesList();
         
         if (typeof toastr !== 'undefined') {
@@ -204,49 +325,7 @@ async function downloadSelectedModel() {
 }
 
 function initWorker(modelName) {
-    if (worker) {
-        worker.terminate();
-        worker = null;
-        
-        // Reject all pending tasks if the worker is terminated
-        for (const [taskId, task] of pendingTasks.entries()) {
-            task.reject(new Error("Worker terminated before completion"));
-        }
-        pendingTasks.clear();
-    }
-    
-    const workerUrl = import.meta.url.replace('index.js', 'worker.js');
-    worker = new Worker(workerUrl, { type: 'module' });
-    
-    // We must pass the base URL so the worker knows where to fetch the ONNX wasm from if needed
-    // However, the nghitts API will be used to fetch the model from cache
-    worker.postMessage({
-        type: 'init',
-        model: modelName,
-        baseUrl: NGHITTS_API
-    });
-    
-    worker.onmessage = (e) => {
-        const { status, voices, audio, chunk, data, taskId } = e.data;
-        if (status === 'ready') {
-            voicesList = voices || [];
-            updateVoicesDropdown();
-        } else if (status === 'error') {
-            console.error("NghiTTS Worker Error:", data);
-            if (taskId && pendingTasks.has(taskId)) {
-                pendingTasks.get(taskId).reject(new Error(data));
-                pendingTasks.delete(taskId);
-            }
-        } else if (status === 'complete' && audio) {
-            if (taskId && pendingTasks.has(taskId)) {
-                const url = URL.createObjectURL(audio);
-                pendingTasks.get(taskId).resolve(url);
-                pendingTasks.delete(taskId);
-            }
-        } else if (status === 'stream' && chunk) {
-            // Stream chunks if needed
-        }
-    };
+    workerPool.init(modelName);
 }
 
 function updateVoicesDropdown() {
@@ -304,23 +383,22 @@ function onVoiceDropdownChange() {
 // TTS Provider Registration
 // -----------------------------------------------------------------------
 
-async function generateTTS(text, voiceId) {
-    return new Promise((resolve, reject) => {
-        if (!worker) {
-            toastr?.error("NghiTTS model not loaded or cached.");
-            return reject(new Error("Model not loaded"));
-        }
-        
-        const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
-        pendingTasks.set(taskId, { resolve, reject });
-        
-        worker.postMessage({
-            type: 'generate',
-            text: text,
-            voice: voiceId,
-            speed: currentSpeed,
-            taskId: taskId
-        });
+function generateTTS(text, voiceId, resolve, reject) {
+    if (workerPool.workers.length === 0) {
+        toastr?.error("NghiTTS model not loaded or cached.");
+        reject(new Error("Model not loaded"));
+        return;
+    }
+    
+    const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
+    pendingTasks.set(taskId, { resolve, reject });
+    
+    workerPool.dispatch({
+        type: 'generate',
+        text: text,
+        voice: voiceId,
+        speed: currentSpeed,
+        taskId: taskId
     });
 }
 
@@ -336,18 +414,13 @@ const providerInfo = {
     fetchTtsGeneration: async (text, voiceId) => {
         // We ignore the voiceId from ST since our model IS the voice 
         // (but we pass 0 internally)
-        const audioUrl = await generateTTS(text, 0);
-        await playAudioWithOverlapPrevention(audioUrl);
+        return new Promise((resolve, reject) => {
+            audioStreamer.startNewSession(resolve);
+            generateTTS(text, 0, resolve, reject);
+        });
     },
     onStopTts: () => {
-        if (currentAudio) {
-            currentAudio.pause();
-            if (currentAudioResolve) {
-                currentAudioResolve();
-            }
-            currentAudio = null;
-            currentAudioResolve = null;
-        }
+        audioStreamer.stop();
     }
 };
 
