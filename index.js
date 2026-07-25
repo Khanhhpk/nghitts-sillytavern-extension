@@ -1844,6 +1844,9 @@ var WorkerPool = class {
           if (taskId && pendingTasks.has(taskId)) {
             pendingTasks.get(taskId).reject(new Error(data));
             pendingTasks.delete(taskId);
+            if (audioStreamer.currentTaskId === taskId) {
+              audioStreamer.stop();
+            }
           }
         } else if (status === "complete") {
           if (taskId && pendingTasks.has(taskId)) {
