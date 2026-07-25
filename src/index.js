@@ -1,5 +1,5 @@
 // NghiTTS SillyTavern Extension
-import { downloadModelToCache, checkModelInCache } from './utils/model-cache.js';
+import { downloadModelToCache, checkModelInCache, getCachedModelsList } from './utils/model-cache.js';
 import uiHtml from './index.html';
 import uiCss from './style.css';
 
@@ -31,8 +31,9 @@ async function initUI() {
         $(container).append($wrapper);
         
         $('#nghitts_refresh_btn').on('click', fetchModelsList);
-        $('#nghitts_model').on('change', onModelChange);
+        $('#nghitts_model').on('change', onModelDropdownChange);
         $('#nghitts_download_btn').on('click', downloadSelectedModel);
+        $('#nghitts_voice').on('change', onVoiceDropdownChange);
         $('#nghitts_speed').on('input', function() {
             currentSpeed = parseFloat($(this).val());
             $('#nghitts_speed_val').text(currentSpeed.toFixed(1));
@@ -40,12 +41,12 @@ async function initUI() {
         
         $('#nghitts_test_btn').on('click', async function() {
             const text = $('#nghitts_test_text').val().trim();
-            const voiceId = $('#nghitts_voice').val();
+            const voiceId = 0; // We always use internal voice 0 for the selected model
             if (!text) {
                 toastr?.info("Vui lòng nhập văn bản để test.");
                 return;
             }
-            if (!voiceId) {
+            if (!currentModel) {
                 toastr?.error("Chưa tải hoặc chưa chọn Voice.");
                 return;
             }
@@ -64,8 +65,9 @@ async function initUI() {
             }
         });
         
-        // Initially fetch the list
+        // Initially fetch lists
         fetchModelsList();
+        refreshCachedVoicesList();
         
         if (typeof toastr !== 'undefined') {
             toastr.success('NghiTTS Extension Loaded!');
@@ -90,18 +92,18 @@ async function fetchModelsList() {
         
         if (modelsList.length > 0) {
             $select.val(modelsList[0]);
-            await onModelChange();
+            await onModelDropdownChange();
         }
     } catch (e) {
         console.error("NghiTTS: Failed to fetch models", e);
     }
 }
 
-async function onModelChange() {
-    currentModel = $('#nghitts_model').val();
-    if (!currentModel) return;
+async function onModelDropdownChange() {
+    const selectedOnlineModel = $('#nghitts_model').val();
+    if (!selectedOnlineModel) return;
     
-    const encodedModel = encodeURIComponent(currentModel);
+    const encodedModel = encodeURIComponent(selectedOnlineModel);
     const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
     const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
     
@@ -114,28 +116,22 @@ async function onModelChange() {
     if (hasModel && hasConfig) {
         $('#nghitts_download_status').text('Cached Locally (Ready)');
         $('#nghitts_download_status').css('color', 'green');
-        initWorker(currentModel);
     } else {
         $('#nghitts_download_status').text('Not Downloaded');
         $('#nghitts_download_status').css('color', 'red');
         $('#nghitts_download_btn').show();
-        // Clear voice list since model isn't loaded
-        $('#nghitts_voice').empty();
-        if (worker) {
-            worker.terminate();
-            worker = null;
-        }
     }
 }
 
 async function downloadSelectedModel() {
-    if (!currentModel) return;
+    const selectedOnlineModel = $('#nghitts_model').val();
+    if (!selectedOnlineModel) return;
     
     const $btn = $('#nghitts_download_btn');
     const $status = $('#nghitts_download_status');
     $btn.prop('disabled', true);
     
-    const encodedModel = encodeURIComponent(currentModel);
+    const encodedModel = encodeURIComponent(selectedOnlineModel);
     const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
     const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
     
@@ -153,8 +149,14 @@ async function downloadSelectedModel() {
         $status.css('color', 'green');
         $btn.hide();
         
-        // Init worker now that it's cached
-        initWorker(currentModel);
+        // Refresh the local voice dropdown list
+        await refreshCachedVoicesList();
+        
+        // If it's the only one, automatically select and load it
+        const currentVoice = $('#nghitts_voice').val();
+        if (currentVoice === selectedOnlineModel) {
+            onVoiceDropdownChange();
+        }
         
     } catch (e) {
         console.error(e);
@@ -168,6 +170,7 @@ async function downloadSelectedModel() {
 function initWorker(modelName) {
     if (worker) {
         worker.terminate();
+        worker = null;
     }
     
     const workerUrl = import.meta.url.replace('index.js', 'worker.js');
@@ -198,11 +201,54 @@ function initWorker(modelName) {
 }
 
 function updateVoicesDropdown() {
-    const $select = $('#nghitts_voice');
-    $select.empty();
-    voicesList.forEach(v => {
-        $select.append($('<option>', { value: v.id, text: v.name }));
-    });
+    // We don't populate dropdown with internal voices anymore,
+    // the dropdown is populated by refreshCachedVoicesList()
+    console.log(`[NghiTTS] Model loaded. Found ${voicesList.length} internal voices.`);
+}
+
+async function refreshCachedVoicesList() {
+    try {
+        const cachedModels = await getCachedModelsList();
+        const $select = $('#nghitts_voice');
+        const prevSelected = $select.val() || currentModel;
+        
+        $select.empty();
+        if (cachedModels.length === 0) {
+            $select.append($('<option>', { value: '', text: 'No local voices available' }));
+        } else {
+            cachedModels.forEach(m => {
+                $select.append($('<option>', { value: m, text: m }));
+            });
+            
+            if (prevSelected && cachedModels.includes(prevSelected)) {
+                $select.val(prevSelected);
+            } else {
+                $select.val(cachedModels[0]);
+            }
+        }
+        
+        onVoiceDropdownChange();
+    } catch (e) {
+        console.error("Failed to refresh cached voices list", e);
+    }
+}
+
+function onVoiceDropdownChange() {
+    const selectedVoice = $('#nghitts_voice').val();
+    if (!selectedVoice) {
+        if (worker) {
+            worker.terminate();
+            worker = null;
+        }
+        currentModel = '';
+        return;
+    }
+    
+    if (currentModel !== selectedVoice) {
+        currentModel = selectedVoice;
+        console.log(`[NghiTTS] Loading voice (model): ${currentModel}`);
+        initWorker(currentModel);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -240,11 +286,15 @@ async function generateTTS(text, voiceId) {
 const providerInfo = {
     name: 'nghitts_wasm',
     displayName: 'NghiTTS (Local WASM)',
+    // Tell ST we have at least one default voice, using the current model name
+    get voices() {
+        if (!currentModel) return [];
+        return [{ id: 0, name: currentModel }];
+    },
     fetchTtsGeneration: async (text, voiceId) => {
-        const audioUrl = await generateTTS(text, voiceId);
-        // SillyTavern usually expects the provider to handle playing, or return an Audio object/URL.
-        // Actually, depending on the ST version, returning the Blob/URL might be correct.
-        // If the TTS API requires an audio context or plays it directly:
+        // We ignore the voiceId from ST since our model IS the voice 
+        // (but we pass 0 internally)
+        const audioUrl = await generateTTS(text, 0);
         const audio = new Audio(audioUrl);
         audio.play();
         return new Promise(r => audio.onended = () => {

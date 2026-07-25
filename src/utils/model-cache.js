@@ -68,6 +68,17 @@ class ModelCache {
       const data = await this.get(url);
       return data !== null;
   }
+
+  async getAllKeys() {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAllKeys();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
 }
 
 const globalCache = new ModelCache();
@@ -111,6 +122,19 @@ export async function downloadModelToCache(url, onProgress) {
 
 export async function checkModelInCache(url) {
     return await globalCache.checkExists(url);
+}
+
+export async function getCachedModelsList() {
+    const keys = await globalCache.getAllKeys();
+    const models = new Set();
+    keys.forEach(url => {
+        if (url.endsWith('.onnx.json')) {
+            const fileName = url.substring(url.lastIndexOf('/') + 1);
+            const decoded = decodeURIComponent(fileName.replace('.onnx.json', ''));
+            models.add(decoded);
+        }
+    });
+    return Array.from(models);
 }
 
 // Cached fetch function for model files (used by piper-tts.js to load into ONNX)

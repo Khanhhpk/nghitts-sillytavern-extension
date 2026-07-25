@@ -57,6 +57,16 @@ var ModelCache = class {
     const data = await this.get(url);
     return data !== null;
   }
+  async getAllKeys() {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], "readonly");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAllKeys();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
 };
 var globalCache = new ModelCache();
 async function downloadModelToCache(url, onProgress) {
@@ -93,9 +103,21 @@ async function downloadModelToCache(url, onProgress) {
 async function checkModelInCache(url) {
   return await globalCache.checkExists(url);
 }
+async function getCachedModelsList() {
+  const keys = await globalCache.getAllKeys();
+  const models = /* @__PURE__ */ new Set();
+  keys.forEach((url) => {
+    if (url.endsWith(".onnx.json")) {
+      const fileName = url.substring(url.lastIndexOf("/") + 1);
+      const decoded = decodeURIComponent(fileName.replace(".onnx.json", ""));
+      models.add(decoded);
+    }
+  });
+  return Array.from(models);
+}
 
 // src/index.html
-var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Voice (Speaker):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
+var index_default = '<div class="nghitts-settings">\n    <div class="inline-drawer">\n        <div class="inline-drawer-toggle inline-drawer-header">\n            <b>NghiTTS (Local WASM)</b>\n            <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>\n        </div>\n        <div class="inline-drawer-content" style="padding: 10px;">\n            <div class="flex-container">\n                <label for="nghitts_model">Model (Online List):</label>\n                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>\n                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>\n            </div>\n            \n            <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">\n                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>\n                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>\n            </div>\n\n            <hr>\n\n            <div class="flex-container" style="margin-top: 10px;">\n                <label for="nghitts_voice">Local Voice (Ready):</label>\n                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>\n            </div>\n            \n            <div class="flex-container" style="margin-top: 10px; align-items: center;">\n                <label for="nghitts_speed" style="width: 60px;">Speed:</label>\n                <input type="range" id="nghitts_speed" min="0.5" max="2" step="0.1" value="1.0" style="flex: 1;">\n                <span id="nghitts_speed_val" style="width: 30px; text-align: right;">1.0</span>\n            </div>\n\n            <hr>\n            \n            <div style="margin-top: 10px;">\n                <label for="nghitts_test_text">Test TTS:</label>\n                <textarea id="nghitts_test_text" class="text_pole" rows="3" style="width: 100%; resize: vertical;" placeholder="Nh\u1EADp v\u0103n b\u1EA3n c\u1EA7n \u0111\u1ECDc..."></textarea>\n                <div style="display: flex; justify-content: flex-end; margin-top: 5px;">\n                    <button id="nghitts_test_btn" class="menu_button">Test Audio</button>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n';
 
 // src/style.css
 var style_default = "/* CSS for NghiTTS Extension */\n.nghitts-settings {\n    margin-bottom: 10px;\n}\n.nghitts-settings .alignitemscenter {\n    align-items: center;\n}\n";
@@ -122,20 +144,21 @@ async function initUI() {
     $wrapper.html(index_default);
     $(container).append($wrapper);
     $("#nghitts_refresh_btn").on("click", fetchModelsList);
-    $("#nghitts_model").on("change", onModelChange);
+    $("#nghitts_model").on("change", onModelDropdownChange);
     $("#nghitts_download_btn").on("click", downloadSelectedModel);
+    $("#nghitts_voice").on("change", onVoiceDropdownChange);
     $("#nghitts_speed").on("input", function() {
       currentSpeed = parseFloat($(this).val());
       $("#nghitts_speed_val").text(currentSpeed.toFixed(1));
     });
     $("#nghitts_test_btn").on("click", async function() {
       const text = $("#nghitts_test_text").val().trim();
-      const voiceId = $("#nghitts_voice").val();
+      const voiceId = 0;
       if (!text) {
         toastr?.info("Vui l\xF2ng nh\u1EADp v\u0103n b\u1EA3n \u0111\u1EC3 test.");
         return;
       }
-      if (!voiceId) {
+      if (!currentModel) {
         toastr?.error("Ch\u01B0a t\u1EA3i ho\u1EB7c ch\u01B0a ch\u1ECDn Voice.");
         return;
       }
@@ -153,6 +176,7 @@ async function initUI() {
       }
     });
     fetchModelsList();
+    refreshCachedVoicesList();
     if (typeof toastr !== "undefined") {
       toastr.success("NghiTTS Extension Loaded!");
     }
@@ -171,16 +195,16 @@ async function fetchModelsList() {
     });
     if (modelsList.length > 0) {
       $select.val(modelsList[0]);
-      await onModelChange();
+      await onModelDropdownChange();
     }
   } catch (e) {
     console.error("NghiTTS: Failed to fetch models", e);
   }
 }
-async function onModelChange() {
-  currentModel = $("#nghitts_model").val();
-  if (!currentModel) return;
-  const encodedModel = encodeURIComponent(currentModel);
+async function onModelDropdownChange() {
+  const selectedOnlineModel = $("#nghitts_model").val();
+  if (!selectedOnlineModel) return;
+  const encodedModel = encodeURIComponent(selectedOnlineModel);
   const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
   const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
   $("#nghitts_download_status").text("Checking cache...");
@@ -190,24 +214,19 @@ async function onModelChange() {
   if (hasModel && hasConfig) {
     $("#nghitts_download_status").text("Cached Locally (Ready)");
     $("#nghitts_download_status").css("color", "green");
-    initWorker(currentModel);
   } else {
     $("#nghitts_download_status").text("Not Downloaded");
     $("#nghitts_download_status").css("color", "red");
     $("#nghitts_download_btn").show();
-    $("#nghitts_voice").empty();
-    if (worker) {
-      worker.terminate();
-      worker = null;
-    }
   }
 }
 async function downloadSelectedModel() {
-  if (!currentModel) return;
+  const selectedOnlineModel = $("#nghitts_model").val();
+  if (!selectedOnlineModel) return;
   const $btn = $("#nghitts_download_btn");
   const $status = $("#nghitts_download_status");
   $btn.prop("disabled", true);
-  const encodedModel = encodeURIComponent(currentModel);
+  const encodedModel = encodeURIComponent(selectedOnlineModel);
   const modelUrl = `${NGHITTS_API}/model/${encodedModel}.onnx`;
   const configUrl = `${NGHITTS_API}/model/${encodedModel}.onnx.json`;
   try {
@@ -221,7 +240,11 @@ async function downloadSelectedModel() {
     $status.text("Cached Locally (Ready)");
     $status.css("color", "green");
     $btn.hide();
-    initWorker(currentModel);
+    await refreshCachedVoicesList();
+    const currentVoice = $("#nghitts_voice").val();
+    if (currentVoice === selectedOnlineModel) {
+      onVoiceDropdownChange();
+    }
   } catch (e) {
     console.error(e);
     $status.text("Download failed");
@@ -233,6 +256,7 @@ async function downloadSelectedModel() {
 function initWorker(modelName) {
   if (worker) {
     worker.terminate();
+    worker = null;
   }
   const workerUrl = import.meta.url.replace("index.js", "worker.js");
   worker = new Worker(workerUrl, { type: "module" });
@@ -255,11 +279,46 @@ function initWorker(modelName) {
   };
 }
 function updateVoicesDropdown() {
-  const $select = $("#nghitts_voice");
-  $select.empty();
-  voicesList.forEach((v) => {
-    $select.append($("<option>", { value: v.id, text: v.name }));
-  });
+  console.log(`[NghiTTS] Model loaded. Found ${voicesList.length} internal voices.`);
+}
+async function refreshCachedVoicesList() {
+  try {
+    const cachedModels = await getCachedModelsList();
+    const $select = $("#nghitts_voice");
+    const prevSelected = $select.val() || currentModel;
+    $select.empty();
+    if (cachedModels.length === 0) {
+      $select.append($("<option>", { value: "", text: "No local voices available" }));
+    } else {
+      cachedModels.forEach((m) => {
+        $select.append($("<option>", { value: m, text: m }));
+      });
+      if (prevSelected && cachedModels.includes(prevSelected)) {
+        $select.val(prevSelected);
+      } else {
+        $select.val(cachedModels[0]);
+      }
+    }
+    onVoiceDropdownChange();
+  } catch (e) {
+    console.error("Failed to refresh cached voices list", e);
+  }
+}
+function onVoiceDropdownChange() {
+  const selectedVoice = $("#nghitts_voice").val();
+  if (!selectedVoice) {
+    if (worker) {
+      worker.terminate();
+      worker = null;
+    }
+    currentModel = "";
+    return;
+  }
+  if (currentModel !== selectedVoice) {
+    currentModel = selectedVoice;
+    console.log(`[NghiTTS] Loading voice (model): ${currentModel}`);
+    initWorker(currentModel);
+  }
 }
 var generationResolve = null;
 function handleAudioComplete(audioBlob) {
@@ -287,8 +346,13 @@ async function generateTTS(text, voiceId) {
 var providerInfo = {
   name: "nghitts_wasm",
   displayName: "NghiTTS (Local WASM)",
+  // Tell ST we have at least one default voice, using the current model name
+  get voices() {
+    if (!currentModel) return [];
+    return [{ id: 0, name: currentModel }];
+  },
   fetchTtsGeneration: async (text, voiceId) => {
-    const audioUrl = await generateTTS(text, voiceId);
+    const audioUrl = await generateTTS(text, 0);
     const audio = new Audio(audioUrl);
     audio.play();
     return new Promise((r) => audio.onended = () => {
