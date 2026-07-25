@@ -56,7 +56,7 @@ async function handlePreview(text, voice, speed) {
 
 // Listen for messages from the main thread
 self.addEventListener("message", async (e) => {
-  const { type, text, voice, speed, model, taskId } = e.data;
+  const { type, text, voice, speed, model, taskId, sequenceId } = e.data;
   
   // Handle initialization
   if (type === 'init') {
@@ -76,24 +76,23 @@ self.addEventListener("message", async (e) => {
     return;
   }
   
-  const streamer = new TextSplitterStream();
-
-  await streamer.push(text);
-  streamer.close(); // Indicate we won't add more text
-
   // Convert voice from voice ID to speaker ID
   const speakerId = typeof voice === 'number' ? voice : parseInt(voice) || 0;
-  
-  // console.log('🎤 Worker received voice ID:', voice);
-  // console.log('🎤 Worker converted to speaker ID:', speakerId);
-  
-  // Convert speed to lengthScale (inverse relationship: higher speed = lower lengthScale)
   const lengthScale = 1.0 / (speed || 1.0);
   
-  const stream = tts.stream(streamer, { 
+  // Create a simple async generator that just yields the single chunk
+  const simpleStreamer = async function*() {
+      yield text;
+  };
+
+  const stream = tts.stream(simpleStreamer(), { 
     speakerId, 
     lengthScale
   });
+  // console.log('🎤 Worker received voice ID:', voice);
+  // console.log('🎤 Worker converted to speaker ID:', speakerId);
+  
+  // lengthScale and stream() already defined above
 
   try {
     for await (const { text, audio } of stream) {
@@ -104,16 +103,17 @@ self.addEventListener("message", async (e) => {
           sampleRate: audio.sampling_rate,
           text,
         },
-        taskId
+        taskId,
+        sequenceId
       });
     }
   } catch (error) {
     console.error("Error during streaming:", error);
-    self.postMessage({ status: "error", data: error.message, taskId });
+    self.postMessage({ status: "error", data: error.message, taskId, sequenceId });
     return;
   }
 
-  self.postMessage({ status: "complete", taskId });
+  self.postMessage({ status: "complete", taskId, sequenceId });
 });
 
 function normalizePeak(f32, target = 0.9) {

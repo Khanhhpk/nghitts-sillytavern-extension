@@ -1,5 +1,6 @@
 // NghiTTS SillyTavern Extension
 import { downloadModelToCache, checkModelInCache, getCachedModelsList } from './utils/model-cache.js';
+import { chunkText, processTextForTTS } from './utils/text-cleaner.js';
 import uiHtml from './index.html';
 import uiCss from './style.css';
 
@@ -21,6 +22,12 @@ class AudioStreamer {
         this.resolvePromise = null;
         this.sourceNodes = [];
         this.currentTaskId = null;
+        
+        // Sequence handling
+        this.expectedSequenceId = 0;
+        this.pendingChunks = new Map(); // sequenceId -> chunk data
+        this.totalChunksExpected = 0;
+        this.chunksCompletedCount = 0;
     }
     
     startNewSession(resolve, taskId) {
@@ -37,9 +44,60 @@ class AudioStreamer {
         this.resolvePromise = resolve;
         this.sourceNodes = [];
         this.currentTaskId = taskId;
+        
+        this.expectedSequenceId = 0;
+        this.pendingChunks.clear();
+        this.totalChunksExpected = 0;
+        this.chunksCompletedCount = 0;
     }
 
-    queueFloat32Array(audioData, sampleRate, taskId) {
+    addChunkData(taskId, sequenceId, audioData, sampleRate) {
+        if (taskId !== this.currentTaskId) return;
+        let seqObj = this.pendingChunks.get(sequenceId);
+        if (!seqObj) {
+            seqObj = { buffers: [], sampleRate, isComplete: false };
+            this.pendingChunks.set(sequenceId, seqObj);
+        }
+        seqObj.buffers.push(audioData);
+    }
+
+    markChunkComplete(taskId, sequenceId) {
+        if (taskId !== this.currentTaskId) return;
+        let seqObj = this.pendingChunks.get(sequenceId);
+        if (!seqObj) {
+            seqObj = { buffers: [], isComplete: true };
+            this.pendingChunks.set(sequenceId, seqObj);
+        } else {
+            seqObj.isComplete = true;
+        }
+        
+        this.chunksCompletedCount++;
+        this.flushQueue();
+    }
+
+    flushQueue() {
+        if (!this.isPlaying || !this.audioContext) return;
+        
+        while (true) {
+            const seqObj = this.pendingChunks.get(this.expectedSequenceId);
+            if (seqObj && seqObj.isComplete) {
+                // Play all buffers for this sequenceId
+                for (const audioData of seqObj.buffers) {
+                    this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId);
+                }
+                
+                // Remove from pending map to free memory
+                this.pendingChunks.delete(this.expectedSequenceId);
+                this.expectedSequenceId++;
+            } else {
+                break; // Still waiting for this sequenceId
+            }
+        }
+        
+        this.checkCompletion();
+    }
+
+    playAudioData(audioData, sampleRate, taskId) {
         if (!this.isPlaying || !this.audioContext || taskId !== this.currentTaskId) return;
 
         const audioBuffer = this.audioContext.createBuffer(1, audioData.length, sampleRate);
@@ -65,19 +123,15 @@ class AudioStreamer {
     }
 
     checkCompletion() {
-        if (!this.isGenerating && this.sourceNodes.length === 0 && this.isPlaying) {
+        const allChunksProcessed = (this.totalChunksExpected > 0 && this.chunksCompletedCount === this.totalChunksExpected);
+        if (allChunksProcessed && this.sourceNodes.length === 0 && this.isPlaying) {
             this.isPlaying = false;
+            this.isGenerating = false;
             if (this.resolvePromise) {
                 this.resolvePromise();
                 this.resolvePromise = null;
             }
         }
-    }
-
-    markComplete() {
-        if (!this.isPlaying) return;
-        this.isGenerating = false;
-        this.checkCompletion();
     }
 
     stop() {
@@ -131,7 +185,7 @@ class WorkerPool {
             });
             
             worker.onmessage = (e) => {
-                const { status, voices, chunk, data, taskId } = e.data;
+                const { status, voices, chunk, data, taskId, sequenceId } = e.data;
                 if (status === 'ready') {
                     if (i === 0) { // Only update UI from the first worker
                         voicesList = voices || [];
@@ -145,14 +199,11 @@ class WorkerPool {
                     }
                 } else if (status === 'complete') {
                     if (taskId && pendingTasks.has(taskId)) {
-                        pendingTasks.delete(taskId); // Remove from pending, but don't resolve yet
-                        if (taskId === audioStreamer.currentTaskId) {
-                            audioStreamer.markComplete(); // Streamer will call resolve() when playback finishes
-                        }
+                        audioStreamer.markChunkComplete(taskId, sequenceId);
                     }
                 } else if (status === 'stream' && chunk) {
                     if (taskId && pendingTasks.has(taskId)) {
-                        audioStreamer.queueFloat32Array(chunk.audio, chunk.sampleRate, taskId);
+                        audioStreamer.addChunkData(taskId, sequenceId, chunk.audio, chunk.sampleRate);
                     }
                 }
             };
@@ -229,6 +280,13 @@ async function initUI() {
             
             const $btn = $(this);
             const $stopBtn = $('#nghitts_stop_test_btn');
+            
+            // Explicitly stop previous test audio
+            audioStreamer.stop();
+            for (const [id, task] of pendingTasks.entries()) {
+                task.resolve();
+                pendingTasks.delete(id);
+            }
             
             $btn.prop('disabled', true).text('Playing...');
             $stopBtn.show();
@@ -416,17 +474,11 @@ function onVoiceDropdownChange() {
 // TTS Provider Registration
 // -----------------------------------------------------------------------
 
-function generateTTS(text, voiceId, resolve, reject) {
+async function generateTTS(text, voiceId, resolve, reject) {
     if (workerPool.workers.length === 0) {
         toastr?.error("NghiTTS model not loaded or cached.");
         reject(new Error("Model not loaded"));
         return;
-    }
-    
-    // Stop any previous tasks running to prevent overlap
-    for (const [id, task] of pendingTasks.entries()) {
-        task.resolve();
-        pendingTasks.delete(id);
     }
     
     const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
@@ -434,13 +486,31 @@ function generateTTS(text, voiceId, resolve, reject) {
     
     audioStreamer.startNewSession(resolve, taskId);
     
-    workerPool.dispatch({
-        type: 'generate',
-        text: text,
-        voice: voiceId,
-        speed: currentSpeed,
-        taskId: taskId
-    });
+    try {
+        const processed = await processTextForTTS(text);
+        const chunks = await chunkText(processed);
+        
+        if (chunks.length === 0) {
+            audioStreamer.stop();
+            return;
+        }
+        
+        audioStreamer.totalChunksExpected = chunks.length;
+        
+        chunks.forEach((chunkText, idx) => {
+            workerPool.dispatch({
+                type: 'generate',
+                text: chunkText,
+                voice: voiceId,
+                speed: currentSpeed,
+                taskId: taskId,
+                sequenceId: idx
+            });
+        });
+    } catch (e) {
+        console.error("Error in generateTTS:", e);
+        reject(e);
+    }
 }
 
 // Register with SillyTavern 1.18 TTS subsystem
@@ -461,6 +531,10 @@ const providerInfo = {
     },
     onStopTts: () => {
         audioStreamer.stop();
+        for (const [id, task] of pendingTasks.entries()) {
+            task.resolve();
+            pendingTasks.delete(id);
+        }
     }
 };
 
