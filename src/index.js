@@ -227,7 +227,11 @@ async function initUI() {
             const voiceId = $('#nghitts_voice').val();
             
             const $btn = $(this);
-            $btn.prop('disabled', true).text('Generating...');
+            const $stopBtn = $('#nghitts_stop_test_btn');
+            
+            $btn.prop('disabled', true).text('Playing...');
+            $stopBtn.show();
+            
             try {
                 await new Promise((resolve, reject) => {
                     generateTTS(text, voiceId, resolve, reject);
@@ -236,7 +240,12 @@ async function initUI() {
                 console.error("Test TTS Error:", e);
             } finally {
                 $btn.prop('disabled', false).text('Test Audio');
+                $stopBtn.hide();
             }
+        });
+
+        $('#nghitts_stop_test_btn').on('click', function() {
+            audioStreamer.stop();
         });
         
         // Initially fetch lists
