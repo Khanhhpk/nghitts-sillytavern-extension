@@ -129,6 +129,7 @@ var voicesList = [];
 var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
+var pendingTasks = /* @__PURE__ */ new Map();
 var NGHITTS_API = "https://nghitts.app/api";
 async function initUI() {
   console.log("[NghiTTS] Initializing UI...");
@@ -257,6 +258,10 @@ function initWorker(modelName) {
   if (worker) {
     worker.terminate();
     worker = null;
+    for (const [taskId, task] of pendingTasks.entries()) {
+      task.reject(new Error("Worker terminated before completion"));
+    }
+    pendingTasks.clear();
   }
   const workerUrl = import.meta.url.replace("index.js", "worker.js");
   worker = new Worker(workerUrl, { type: "module" });
@@ -266,14 +271,22 @@ function initWorker(modelName) {
     baseUrl: NGHITTS_API
   });
   worker.onmessage = (e) => {
-    const { status, voices, audio, chunk, data } = e.data;
+    const { status, voices, audio, chunk, data, taskId } = e.data;
     if (status === "ready") {
       voicesList = voices || [];
       updateVoicesDropdown();
     } else if (status === "error") {
       console.error("NghiTTS Worker Error:", data);
+      if (taskId && pendingTasks.has(taskId)) {
+        pendingTasks.get(taskId).reject(new Error(data));
+        pendingTasks.delete(taskId);
+      }
     } else if (status === "complete" && audio) {
-      handleAudioComplete(audio);
+      if (taskId && pendingTasks.has(taskId)) {
+        const url = URL.createObjectURL(audio);
+        pendingTasks.get(taskId).resolve(url);
+        pendingTasks.delete(taskId);
+      }
     } else if (status === "stream" && chunk) {
     }
   };
@@ -320,26 +333,20 @@ function onVoiceDropdownChange() {
     initWorker(currentModel);
   }
 }
-var generationResolve = null;
-function handleAudioComplete(audioBlob) {
-  if (generationResolve) {
-    const url = URL.createObjectURL(audioBlob);
-    generationResolve(url);
-    generationResolve = null;
-  }
-}
 async function generateTTS(text, voiceId) {
   return new Promise((resolve, reject) => {
     if (!worker) {
-      toastr.error("NghiTTS model not loaded or cached.");
-      return reject("Model not loaded");
+      toastr?.error("NghiTTS model not loaded or cached.");
+      return reject(new Error("Model not loaded"));
     }
-    generationResolve = resolve;
+    const taskId = Date.now().toString() + Math.random().toString(36).substring(2);
+    pendingTasks.set(taskId, { resolve, reject });
     worker.postMessage({
       type: "generate",
       text,
       voice: voiceId,
-      speed: currentSpeed
+      speed: currentSpeed,
+      taskId
     });
   });
 }

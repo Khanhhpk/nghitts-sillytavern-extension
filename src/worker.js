@@ -56,7 +56,7 @@ async function handlePreview(text, voice, speed) {
 
 // Listen for messages from the main thread
 self.addEventListener("message", async (e) => {
-  const { type, text, voice, speed, model } = e.data;
+  const { type, text, voice, speed, model, taskId } = e.data;
   
   // Handle initialization
   if (type === 'init') {
@@ -66,7 +66,7 @@ self.addEventListener("message", async (e) => {
   
   // Handle TTS generation
   if (!tts) {
-    self.postMessage({ status: "error", data: "Model not initialized" });
+    self.postMessage({ status: "error", data: "Model not initialized", taskId });
     return;
   }
   
@@ -104,12 +104,13 @@ self.addEventListener("message", async (e) => {
           audio: audio.toBlob(),
           text,
         },
+        taskId
       });
       chunks.push(audio);
     }
   } catch (error) {
     console.error("Error during streaming:", error);
-    self.postMessage({ status: "error", data: error.message });
+    self.postMessage({ status: "error", data: error.message, taskId });
     return;
   }
 
@@ -134,12 +135,12 @@ self.addEventListener("message", async (e) => {
       audio = new chunks[0].constructor(waveform, originalSamplingRate);
     } catch (error) {
       console.error("Error processing audio chunks:", error);
-      self.postMessage({ status: "error", data: error.message });
+      self.postMessage({ status: "error", data: error.message, taskId });
       return;
     }
   }
 
-  self.postMessage({ status: "complete", audio: audio?.toBlob() });
+  self.postMessage({ status: "complete", audio: audio?.toBlob(), taskId });
 });
 
 function normalizePeak(f32, target = 0.9) {
