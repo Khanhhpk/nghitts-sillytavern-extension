@@ -6,21 +6,21 @@
         </div>
         <div class="inline-drawer-content" style="padding: 10px;">
             <div class="flex-container">
-                <label for="nghitts_model">Model (Online List):</label>
-                <select id="nghitts_model" class="text_pole" style="flex: 1;"></select>
-                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Refresh List"></button>
+                <label for="nghitts_model" title="Chọn Model AI từ danh sách máy chủ online để tải về">Model (Online List):</label>
+                <select id="nghitts_model" class="text_pole" style="flex: 1;" title="Chọn một Model để tải về máy của bạn"></select>
+                <button id="nghitts_refresh_btn" class="menu_button fa-solid fa-sync" title="Làm mới danh sách Model Online"></button>
             </div>
             
             <div class="flex-container alignitemscenter" style="margin-top: 10px; justify-content: space-between;">
-                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);">Checking cache...</div>
-                <button id="nghitts_download_btn" class="menu_button" style="display: none;">Download to Local Cache</button>
+                <div id="nghitts_download_status" style="font-weight: bold; color: var(--grey_text);" title="Trạng thái tải model về bộ nhớ tạm (Cache) của trình duyệt">Checking cache...</div>
+                <button id="nghitts_download_btn" class="menu_button" style="display: none;" title="Bấm vào đây để tải Model này về máy. Sau khi tải, bạn có thể dùng Offline (Không cần mạng).">Tải Model về máy (Offline)</button>
             </div>
 
             <hr>
 
             <div class="flex-container" style="margin-top: 10px;">
-                <label for="nghitts_voice">Local Voice (Ready):</label>
-                <select id="nghitts_voice" class="text_pole" style="flex: 1;"></select>
+                <label for="nghitts_voice" title="Chọn Giọng Đọc (Voice) từ những Model đã được tải về sẵn trong máy">Giọng đọc (Đã tải sẵn):</label>
+                <select id="nghitts_voice" class="text_pole" style="flex: 1;" title="Danh sách các giọng đọc đã có sẵn trong máy và sẵn sàng sử dụng ngay"></select>
             </div>
             
             <div class="flex-container" style="margin-top: 10px; align-items: center;">
