@@ -2,6 +2,18 @@
 
 import { processTextForTTS, chunkText, loadConfig, isDebugEnabled, debugLog } from '../utils/text-cleaner.js';
 
+let ortCache = null;
+async function getOrt() {
+    if (!ortCache) ortCache = await import('onnxruntime-web');
+    return ortCache;
+}
+
+let phonemizerCache = null;
+async function getPhonemizer() {
+    if (!phonemizerCache) phonemizerCache = await import('phonemizer');
+    return phonemizerCache;
+}
+
 // Merge phonemizer output (which may be an array of clause strings) into a single
 // string while preserving clause separators (commas/semicolons/colons) from the
 // original text. This lets the model \"see\" punctuation and pause naturally.
@@ -25,8 +37,9 @@ function mergePhonemizerOutputPreservePunct(text, phonemes) {
     return String(phonemes ?? '');
   }
 
-  // Collect clause separators from original text (commas/semicolon/colon)
-  const separators = Array.from(text.matchAll(/[,;:]/g), (m) => m[0]);
+  // Collect separators from original text (commas/semicolon/colon/period/question/exclamation/ellipsis)
+  // This lets the model "see" all punctuation and pause naturally, especially if chunkText combined short sentences
+  const separators = Array.from(text.matchAll(/[,;:!?.…]/g), (m) => m[0]);
 
   let result = '';
   let sepIdx = 0;
@@ -159,7 +172,7 @@ export class PiperTTS {
   static async from_pretrained(modelPath, configPath) {
     try {
       // Import ONNX Runtime Web and caching utility
-      const ort = await import('onnxruntime-web');
+      const ort = await getOrt();
       const { cachedFetch } = await import('../utils/model-cache.js');
       
       // Use JSDelivr for WASM files since we are inside a client extension
@@ -183,7 +196,8 @@ export class PiperTTS {
         executionProviders: [{
           name: 'wasm',
           simd: true
-        }]
+        }],
+        graphOptimizationLevel: 'all'
       });
       
       return new PiperTTS(voiceConfig, session);
@@ -216,7 +230,7 @@ export class PiperTTS {
     }
 
     // Use phonemizer for espeak-style phonemes
-    const { phonemize } = await import('phonemizer');
+    const { phonemize } = await getPhonemizer();
     const voice = this.voiceConfig.espeak?.voice || 'en-us';
     
     if (isDebugEnabled(config)) {
@@ -342,7 +356,7 @@ export class PiperTTS {
             const phonemeIds = await this.phonemesToIds(textPhonemes);
             
             // Prepare tensors for Piper model
-            const ort = await import('onnxruntime-web');
+            const ort = await getOrt();
             
             const inputs = {
               'input': new ort.Tensor('int64', new BigInt64Array(phonemeIds.map(id => BigInt(id))), [1, phonemeIds.length]),

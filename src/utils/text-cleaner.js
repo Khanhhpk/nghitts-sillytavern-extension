@@ -13,12 +13,18 @@ let acronymMapCache = null;
 // Cache for the config
 let configCache = null;
 
+// Cache for the word replacement map
+let wordReplacementMapCache = null;
+
 /**
  * Load and parse the CSV file containing non-Vietnamese word replacements
  * Returns a Map sorted by length (longest first) for proper matching priority
- * Note: This function does NOT cache the result - it always fetches fresh data
  */
 async function loadWordReplacementMap() {
+    if (wordReplacementMapCache !== null) {
+        return wordReplacementMapCache;
+    }
+
     try {
         const csvText = wordReplacementCsvText;
         const lines = csvText.split('\n');
@@ -35,7 +41,9 @@ async function loadWordReplacementMap() {
                 const original = match[1].trim().toLowerCase();
                 const transliteration = match[2].trim();
                 if (original && transliteration) {
-                    replacementMap.set(original, transliteration);
+                    const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
+                    replacementMap.set(original, { transliteration, regex });
                 }
             }
         }
@@ -45,10 +53,12 @@ async function loadWordReplacementMap() {
             .sort((a, b) => b[0].length - a[0].length);
 
         // Create a new Map with sorted entries
-        return new Map(sortedEntries);
+        wordReplacementMapCache = new Map(sortedEntries);
+        return wordReplacementMapCache;
     } catch (error) {
         console.error('Error loading word replacement CSV:', error);
-        return new Map();
+        wordReplacementMapCache = new Map();
+        return wordReplacementMapCache;
     }
 }
 
@@ -78,8 +88,10 @@ async function loadAcronymMap() {
                 const acronym = match[1].trim();
                 const transliteration = match[2].trim();
                 if (acronym && transliteration) {
+                    const escapedAcronym = acronym.toLowerCase().replace(/[+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedAcronym}\\b`, 'gi');
                     // Store lowercase for case-insensitive matching
-                    acronymMap.set(acronym.toLowerCase(), transliteration);
+                    acronymMap.set(acronym.toLowerCase(), { transliteration, regex });
                 }
             }
         }
@@ -266,17 +278,8 @@ export async function convertAcronyms(text, acronymMap, config = null) {
     const convertedAcronyms = [];
 
     // Process each acronym entry (already sorted by length, longest first)
-    for (const [acronym, transliteration] of acronymMap) {
-        // Escape special regex characters in the acronym
-        // Note: dots in acronyms (e.g., "tp.hcm") should match literal dots, so we don't escape them
-        const escapedAcronym = acronym.replace(/[+?^${}()|[\]\\]/g, '\\$&');
-        // Dots are not escaped - they match literal dots
-        
-        // Create regex for case-insensitive matching
-        // Use word boundaries - they work correctly with dots (dot is non-word char)
-        // Pattern: word boundary + acronym + word boundary
-        // For "tp.hcm", \b matches before 't' and after 'm', dot is non-word so it's fine
-        const regex = new RegExp(`\\b${escapedAcronym}\\b`, 'gi');
+    for (const [acronym, data] of acronymMap) {
+        const { transliteration, regex } = data;
         
         // Replace all occurrences
         const beforeReplace = result;
@@ -317,14 +320,8 @@ export async function replaceNonVietnameseWords(text, replacementMap, config = n
     const replacedWords = [];
 
     // Process each replacement entry (already sorted by length, longest first)
-    for (const [original, transliteration] of replacementMap) {
-        // Create regex to match whole word/phrase only
-        // Escape special regex characters in the original word
-        const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        
-        // For multi-word phrases, match with word boundaries at start and end
-        // For single words, use word boundaries
-        const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
+    for (const [original, data] of replacementMap) {
+        const { transliteration, regex } = data;
         
         // Replace all occurrences
         const beforeReplace = result;
@@ -370,10 +367,14 @@ export function cleanTextForTTS(text) {
         .replace(/["“”'‘’]/g, ' ')
         // Convert em dashes to commas for natural pauses if they weren't configured in custom pauses
         .replace(/—+/g, ', ')
+        // Convert en dashes to standard dashes so they survive the non-Latin filter (critical for number/date ranges)
+        .replace(/–/g, '-')
         // Remove underscores
         .replace(/_/g, ' ')
         // Remove standard dashes but preserve those between numbers (for date ranges like 25-26, year ranges like 1873-1907)
         .replace(/(?<!\d)-(?!\d)/g, ' ')
+        // Convert horizontal ellipsis to three dots so it survives the non-Latin filter and acts as a proper pause
+        .replace(/…/g, '...')
         // Remove non-Latin characters (keep basic Latin, Latin Extended, Vietnamese characters, numbers, punctuation, and whitespace)
         // Replaced with a space to prevent words from sticking together (e.g. đó——vậy -> đó vậy)
         .replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, ' ')

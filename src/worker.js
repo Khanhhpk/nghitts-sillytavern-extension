@@ -25,6 +25,7 @@ async function initializeModel(modelName = null, baseUrl = '') {
   } catch (e) {
     console.error("Error loading model:", e);
     self.postMessage({ status: "error", data: e.message });
+    throw e; // Re-throw to reject initPromise so subsequent tasks don't crash
   }
 }
 
@@ -145,23 +146,13 @@ async function handleMessage(data) {
         },
         taskId,
         sequenceId
-      });
+      }, [audio.audio.buffer]);
     }
     self.postMessage({ status: "complete", taskId, sequenceId });
   } catch (error) {
     console.error("Error during streaming:", error);
     self.postMessage({ status: "error", data: error.message, taskId, sequenceId });
     return;
-  }
-}
-
-function normalizePeak(f32, target = 0.9) {
-  if (!f32?.length) return;
-  let max = 1e-9;
-  for (let i = 0; i < f32.length; i++) max = Math.max(max, Math.abs(f32[i]));
-  const g = Math.min(4, target / max);
-  if (g < 1) {
-    for (let i = 0; i < f32.length; i++) f32[i] *= g;
   }
 }
 

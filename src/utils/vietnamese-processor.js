@@ -141,9 +141,8 @@ function numberToWords(numStr) {
  */
 function removeThousandSeparators(text) {
     // Match patterns like: 1.000, 140.000, 1.000.000, etc.
-    // Pattern: 1-3 digits, then one or more groups of (dot + exactly 3 digits)
-    // Must be followed by word boundary, space, or end of string (not another digit)
-    return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])/g, (match) => {
+    // Must be followed by word boundary, space, or end of string (not another digit or dot)
+    return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.])/g, (match) => {
         // Remove all dots from the number
         const numberWithoutDots = match.replace(/\./g, '');
         return numberWithoutDots;
@@ -612,7 +611,8 @@ function convertDate(text) {
     // IMPORTANT: DD/MM/YYYY or DD-MM-YYYY (2 separators) must come BEFORE MM-YYYY pattern
     // This ensures "3-3-2026" is read as "ngày 3 tháng 3 năm 2026" not "tháng 3 tháng 3 năm 2026"
     // Rule: If there are 2 "-" or 2 "/", always read as "ngày [number] tháng [number] năm [number]"
-    text = text.replace(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/g, (match, day, month, year) => {
+    // Optionally absorb preceding "ngày" to prevent "ngày ngày..."
+    text = text.replace(/(?:ngày\s+)?(\d{1,2})[/-](\d{1,2})[/-](\d{4})/gi, (match, day, month, year) => {
         if (isValidDate(day, month, year)) {
             const result = `ngày ${numberToWords(day)} tháng ${numberToWords(month)} năm ${numberToWords(year)}`;
             matches.push({ pattern: 'DD/MM/YYYY', match, result });
@@ -652,7 +652,7 @@ function convertDate(text) {
     // IMPORTANT: Exclude cases where there's a "%" after (e.g., "6-10%" should be handled as percentage range, not date)
     // Use a more specific negative lookahead that checks if the pattern is followed by digits then "%"
     // This prevents matching "6-1" in "6-10%" by checking if there are more digits before "%"
-    text = text.replace(/(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/g, (match, day, month, offset, fullText) => {
+    text = text.replace(/(?:ngày\s+)?(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/gi, (match, day, month, offset, fullText) => {
         // Additional check: if there's a "%" after (with optional whitespace and/or digits), skip this match
         // This handles both "6-10%" (where % is immediately after) and "6-1 0%" (where there are digits before %)
         const afterMatch = fullText.slice(offset + match.length);
@@ -660,7 +660,7 @@ function convertDate(text) {
             return match; // Don't replace, let percentage handler process it
         }
         if (isValidDate(day, month)) {
-            const result = `${numberToWords(day)} tháng ${numberToWords(month)}`;
+            const result = `ngày ${numberToWords(day)} tháng ${numberToWords(month)}`;
             matches.push({ pattern: 'DD/MM', match, result });
             return result;
         }
@@ -947,8 +947,11 @@ function normalizePunctuation(text) {
     text = text.replace(/\.{3,}/g, '...');
     text = text.replace(/…/g, '...');
     
-    // Remove multiple punctuation
-    text = text.replace(/([!?.]){2,}/g, '$1');
+    // Remove multiple punctuation, but preserve ellipsis (...)
+    text = text.replace(/([!?.]){2,}/g, (match, p1) => {
+        if (p1 === '.') return match.length >= 3 ? '...' : '.';
+        return p1;
+    });
     
     return text;
 }

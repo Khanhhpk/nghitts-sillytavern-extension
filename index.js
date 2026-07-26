@@ -94,8 +94,14 @@ var ModelCache = class {
     });
   }
   async checkExists(url) {
-    const data = await this.get(url);
-    return data !== null;
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], "readonly");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.count(url);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result > 0);
+    });
   }
   async getAllKeys() {
     await this.init();
@@ -289,7 +295,7 @@ function numberToWords(numStr) {
   return numStr.split("").map((d) => DIGITS[d] || d).join(" ");
 }
 function removeThousandSeparators(text) {
-  return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])/g, (match) => {
+  return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.])/g, (match) => {
     const numberWithoutDots = match.replace(/\./g, "");
     return numberWithoutDots;
   });
@@ -623,7 +629,7 @@ function convertDate(text) {
     }
     return match;
   });
-  text = text.replace(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/g, (match, day, month, year) => {
+  text = text.replace(/(?:ngày\s+)?(\d{1,2})[/-](\d{1,2})[/-](\d{4})/gi, (match, day, month, year) => {
     if (isValidDate(day, month, year)) {
       const result = `ng\xE0y ${numberToWords(day)} th\xE1ng ${numberToWords(month)} n\u0103m ${numberToWords(year)}`;
       matches.push({ pattern: "DD/MM/YYYY", match, result });
@@ -645,13 +651,13 @@ function convertDate(text) {
     }
     return match;
   });
-  text = text.replace(/(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/g, (match, day, month, offset, fullText) => {
+  text = text.replace(/(?:ngày\s+)?(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/gi, (match, day, month, offset, fullText) => {
     const afterMatch = fullText.slice(offset + match.length);
     if (/\s*%/.test(afterMatch) || /\d+\s*%/.test(afterMatch)) {
       return match;
     }
     if (isValidDate(day, month)) {
-      const result = `${numberToWords(day)} th\xE1ng ${numberToWords(month)}`;
+      const result = `ng\xE0y ${numberToWords(day)} th\xE1ng ${numberToWords(month)}`;
       matches.push({ pattern: "DD/MM", match, result });
       return result;
     }
@@ -847,7 +853,10 @@ function normalizePunctuation(text) {
   text = text.replace(/[–—−]/g, "-");
   text = text.replace(/\.{3,}/g, "...");
   text = text.replace(/…/g, "...");
-  text = text.replace(/([!?.]){2,}/g, "$1");
+  text = text.replace(/([!?.]){2,}/g, (match, p1) => {
+    if (p1 === ".") return match.length >= 3 ? "..." : ".";
+    return p1;
+  });
   return text;
 }
 function cleanWhitespace(text) {
@@ -1334,7 +1343,11 @@ var non_vietnamese_words_default = "original,transliteration\r\noriginal,\xF4-ri
 var TRANSLITERATION_SKIP_WORDS = /* @__PURE__ */ new Set(["mc"]);
 var acronymMapCache = null;
 var configCache = null;
+var wordReplacementMapCache = null;
 async function loadWordReplacementMap() {
+  if (wordReplacementMapCache !== null) {
+    return wordReplacementMapCache;
+  }
   try {
     const csvText = non_vietnamese_words_default;
     const lines = csvText.split("\n");
@@ -1347,15 +1360,19 @@ async function loadWordReplacementMap() {
         const original = match[1].trim().toLowerCase();
         const transliteration = match[2].trim();
         if (original && transliteration) {
-          replacementMap.set(original, transliteration);
+          const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escapedOriginal}\\b`, "gi");
+          replacementMap.set(original, { transliteration, regex });
         }
       }
     }
     const sortedEntries = Array.from(replacementMap.entries()).sort((a, b) => b[0].length - a[0].length);
-    return new Map(sortedEntries);
+    wordReplacementMapCache = new Map(sortedEntries);
+    return wordReplacementMapCache;
   } catch (error) {
     console.error("Error loading word replacement CSV:", error);
-    return /* @__PURE__ */ new Map();
+    wordReplacementMapCache = /* @__PURE__ */ new Map();
+    return wordReplacementMapCache;
   }
 }
 async function loadAcronymMap() {
@@ -1374,7 +1391,9 @@ async function loadAcronymMap() {
         const acronym = match[1].trim();
         const transliteration = match[2].trim();
         if (acronym && transliteration) {
-          acronymMap.set(acronym.toLowerCase(), transliteration);
+          const escapedAcronym = acronym.toLowerCase().replace(/[+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escapedAcronym}\\b`, "gi");
+          acronymMap.set(acronym.toLowerCase(), { transliteration, regex });
         }
       }
     }
@@ -1481,9 +1500,8 @@ async function convertAcronyms(text, acronymMap, config = null) {
   }
   let result = text;
   const convertedAcronyms = [];
-  for (const [acronym, transliteration] of acronymMap) {
-    const escapedAcronym = acronym.replace(/[+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escapedAcronym}\\b`, "gi");
+  for (const [acronym, data] of acronymMap) {
+    const { transliteration, regex } = data;
     const beforeReplace = result;
     result = result.replace(regex, (match) => {
       return transliteration;
@@ -1506,9 +1524,8 @@ async function replaceNonVietnameseWords(text, replacementMap, config = null) {
   }
   let result = text;
   const replacedWords = [];
-  for (const [original, transliteration] of replacementMap) {
-    const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escapedOriginal}\\b`, "gi");
+  for (const [original, data] of replacementMap) {
+    const { transliteration, regex } = data;
     const beforeReplace = result;
     result = result.replace(regex, (match) => {
       if (match[0] === match[0].toUpperCase()) {
@@ -1534,7 +1551,7 @@ function cleanTextForTTS(text) {
     return "";
   }
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|[\u{FE0F}]|[\u{200D}]/gu;
-  const cleanedText = text.replace(emojiRegex, " ").replace(/[()]/g, ", ").replace(/[\\¯]/g, " ").replace(/["“”'‘’]/g, " ").replace(/—+/g, ", ").replace(/_/g, " ").replace(/(?<!\d)-(?!\d)/g, " ").replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, " ").replace(/[ \t]*,[ \t]*(,[ \t]*)+/g, ", ").replace(/[ \t]+/g, " ");
+  const cleanedText = text.replace(emojiRegex, " ").replace(/[()]/g, ", ").replace(/[\\¯]/g, " ").replace(/["“”'‘’]/g, " ").replace(/—+/g, ", ").replace(/–/g, "-").replace(/_/g, " ").replace(/(?<!\d)-(?!\d)/g, " ").replace(/…/g, "...").replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, " ").replace(/[ \t]*,[ \t]*(,[ \t]*)+/g, ", ").replace(/[ \t]+/g, " ");
   return cleanedText.trim();
 }
 async function processTextForTTS(text) {
@@ -1688,14 +1705,23 @@ var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
 var pendingTasks = /* @__PURE__ */ new Map();
-var nghittsDictionary = JSON.parse(localStorage.getItem("nghitts_dictionary") || "[]");
-var nghittsPauses = JSON.parse(localStorage.getItem("nghitts_pauses") || "[]");
+function safeParseArray(jsonStr) {
+  try {
+    const arr = JSON.parse(jsonStr);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+var nghittsDictionary = safeParseArray(localStorage.getItem("nghitts_dictionary") || "[]");
+var nghittsPauses = safeParseArray(localStorage.getItem("nghitts_pauses") || "[]");
 var AudioStreamer = class {
   constructor() {
     this.audioContext = null;
     this.nextStartTime = 0;
     this.isPlaying = false;
     this.isGenerating = false;
+    this.isPaused = false;
     this.resolvePromise = null;
     this.sourceNodes = [];
     this.currentTaskId = null;
@@ -1703,6 +1729,9 @@ var AudioStreamer = class {
     this.pendingChunks = /* @__PURE__ */ new Map();
     this.totalChunksExpected = 0;
     this.chunksCompletedCount = 0;
+    this.unprocessedChunks = [];
+    this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
   }
   startNewSession(resolve, taskId) {
     this.stop();
@@ -1710,11 +1739,12 @@ var AudioStreamer = class {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     if (this.audioContext.state === "suspended") {
-      this.audioContext.resume();
+      this.audioContext.resume().catch((e) => console.warn("AudioContext resume blocked:", e));
     }
     this.nextStartTime = this.audioContext.currentTime + 0.05;
     this.isPlaying = true;
     this.isGenerating = true;
+    this.isPaused = false;
     this.resolvePromise = resolve;
     this.sourceNodes = [];
     this.currentTaskId = taskId;
@@ -1722,6 +1752,9 @@ var AudioStreamer = class {
     this.pendingChunks.clear();
     this.totalChunksExpected = 0;
     this.chunksCompletedCount = 0;
+    this.unprocessedChunks = [];
+    this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
   }
   addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
     if (taskId !== this.currentTaskId) return;
@@ -1743,7 +1776,20 @@ var AudioStreamer = class {
       seqObj.isComplete = true;
     }
     this.chunksCompletedCount++;
+    this.inFlightChunks--;
     this.flushQueue();
+    this.dispatchNextChunks();
+  }
+  dispatchNextChunks() {
+    if (!this.isPlaying || !this.currentTaskId || this.isPaused) return;
+    const maxInFlight = (typeof workerPool !== "undefined" ? workerPool.poolSize : 1) + 1;
+    while (this.inFlightChunks < maxInFlight && this.unprocessedChunks.length > 0) {
+      const nextChunk = this.unprocessedChunks.shift();
+      this.inFlightChunks++;
+      if (typeof workerPool !== "undefined") {
+        workerPool.dispatch(nextChunk);
+      }
+    }
   }
   flushQueue() {
     if (!this.isPlaying || !this.audioContext) return;
@@ -1752,12 +1798,17 @@ var AudioStreamer = class {
       if (!seqObj) break;
       while (seqObj.playCursor < seqObj.buffers.length) {
         const audioData = seqObj.buffers[seqObj.playCursor];
-        const isLastBuffer = seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length - 1;
-        this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
         seqObj.playCursor++;
+        const isLastBuffer = seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length;
+        this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, null);
       }
       if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
+        const pauseSec = this.pauseMap.get(this.expectedSequenceId) || 0;
+        if (pauseSec > 0) {
+          this.nextStartTime += pauseSec;
+        }
         this.pendingChunks.delete(this.expectedSequenceId);
+        this.pauseMap.delete(this.expectedSequenceId);
         this.expectedSequenceId++;
       } else {
         break;
@@ -1778,16 +1829,7 @@ var AudioStreamer = class {
     }
     source.start(scheduleTime);
     this.sourceNodes.push(source);
-    let extraPause = 0;
-    if (text) {
-      for (const p of nghittsPauses) {
-        if (text.endsWith(p.symbol)) {
-          extraPause = parseFloat(p.time) || 0;
-          break;
-        }
-      }
-    }
-    this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
+    this.nextStartTime = scheduleTime + audioBuffer.duration;
     source.onended = () => {
       const idx = this.sourceNodes.indexOf(source);
       if (idx !== -1) {
@@ -1804,6 +1846,9 @@ var AudioStreamer = class {
       }
       this.isPlaying = false;
       this.isGenerating = false;
+      if (this.audioContext && this.audioContext.state === "running") {
+        this.audioContext.suspend().catch((e) => console.error(e));
+      }
       if (this.resolvePromise) {
         this.resolvePromise();
         this.resolvePromise = null;
@@ -1819,6 +1864,10 @@ var AudioStreamer = class {
     }
     this.isPlaying = false;
     this.isGenerating = false;
+    this.isPaused = false;
+    this.unprocessedChunks = [];
+    this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
     for (const source of this.sourceNodes) {
       try {
         source.stop();
@@ -1826,9 +1875,23 @@ var AudioStreamer = class {
       }
     }
     this.sourceNodes = [];
+    if (this.audioContext && this.audioContext.state === "running") {
+      this.audioContext.suspend().catch((e) => console.error(e));
+    }
     if (this.resolvePromise) {
-      this.resolvePromise();
+      this.resolvePromise(new Error("User stopped TTS"));
       this.resolvePromise = null;
+    }
+  }
+  togglePause() {
+    if (!this.audioContext || !this.isPlaying) return;
+    if (this.audioContext.state === "running") {
+      this.audioContext.suspend();
+      this.isPaused = true;
+    } else if (this.audioContext.state === "suspended") {
+      this.audioContext.resume().catch((e) => console.warn("AudioContext resume blocked:", e));
+      this.isPaused = false;
+      this.dispatchNextChunks();
     }
   }
 };
@@ -1858,7 +1921,7 @@ function updateWorkerStatusUI() {
 }
 var WorkerPool = class {
   constructor() {
-    this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 2;
+    this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 1;
     this.workers = [];
     this.currentWorkerIdx = 0;
     this.currentModelName = "";
@@ -2040,46 +2103,43 @@ function initAdvancedSettingsUI() {
     }
     const modal = document.getElementById("nghitts_payload_modal");
     if (!modal) return;
-    let dictText = text;
-    if (nghittsDictionary && nghittsDictionary.length > 0) {
-      nghittsDictionary.forEach((item) => {
-        if (item.word && item.pron) {
-          const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          dictText = dictText.replace(new RegExp(escapedWord, "gi"), item.pron);
-        }
-      });
-    }
-    let rawChunks = [dictText];
-    if (nghittsPauses && nghittsPauses.length > 0) {
-      let tempRaw = [];
-      for (let rc of rawChunks) {
-        let tempChunk = rc;
-        nghittsPauses.forEach((p) => {
-          if (p.symbol) {
-            const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            tempChunk = tempChunk.replace(new RegExp(escaped, "g"), p.symbol + "||SPLIT||");
+    const lines = text.split("\n");
+    let finalChunks = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      if (!line.trim()) continue;
+      let dictText = line;
+      if (nghittsDictionary && nghittsDictionary.length > 0) {
+        nghittsDictionary.forEach((item) => {
+          if (item.word && item.pron) {
+            const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            dictText = dictText.replace(new RegExp(escapedWord, "gi"), item.pron);
           }
         });
-        tempRaw.push(...tempChunk.split("||SPLIT||").filter((s) => s.trim().length > 0));
       }
-      rawChunks = tempRaw;
-    }
-    let finalChunks = [];
-    for (let rc of rawChunks) {
-      let endingPauseSymbol = null;
-      if (nghittsPauses && nghittsPauses.length > 0) {
-        for (let p of nghittsPauses) {
-          if (p.symbol && rc.endsWith(p.symbol)) {
-            endingPauseSymbol = p.symbol;
-            break;
+      let textToProcess = dictText;
+      if (Array.isArray(nghittsPauses) && nghittsPauses.length > 0) {
+        const customPauseMatches = [];
+        for (const p of nghittsPauses) {
+          if (!p.symbol) continue;
+          const escapedSymbol = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(escapedSymbol, "g");
+          let match;
+          while ((match = regex.exec(dictText)) !== null) {
+            customPauseMatches.push({ index: match.index, symbol: p.symbol });
+          }
+        }
+        if (customPauseMatches.length > 0) {
+          customPauseMatches.sort((a, b) => a.index - b.index);
+          const firstPause = customPauseMatches[0];
+          const isStandardPunc = /^[.!?,:;…]+$/.test(firstPause.symbol);
+          if (!isStandardPunc) {
+            textToProcess = dictText.replace(firstPause.symbol, " ");
           }
         }
       }
-      const processed = await processTextForTTS(rc);
+      const processed = await processTextForTTS(textToProcess);
       const subChunks = await chunkText(processed);
-      if (endingPauseSymbol && subChunks.length > 0) {
-        subChunks[subChunks.length - 1] += endingPauseSymbol;
-      }
       finalChunks.push(...subChunks);
     }
     const $content = $("#nghitts_payload_content");
@@ -2319,38 +2379,54 @@ async function generateTTS(text, voiceId, resolve, reject) {
       rawChunks = tempRaw;
     }
     let chunks = [];
+    const pauseEntries = [];
+    let chunkOffset = 0;
     for (let rc of rawChunks) {
-      let endingPauseSymbol = null;
+      let pauseSeconds = 0;
+      let textToProcess = rc;
       if (nghittsPauses && nghittsPauses.length > 0) {
         for (let p of nghittsPauses) {
           if (p.symbol && rc.endsWith(p.symbol)) {
-            endingPauseSymbol = p.symbol;
+            pauseSeconds = parseFloat(p.time) || 0;
+            const isStandardPunc = /^[.!?,:;…]+$/.test(p.symbol);
+            if (!isStandardPunc) {
+              textToProcess = rc.slice(0, -p.symbol.length);
+            }
             break;
           }
         }
       }
-      const processed = await processTextForTTS(rc);
+      const processed = await processTextForTTS(textToProcess);
       const subChunks = await chunkText(processed);
-      if (endingPauseSymbol && subChunks.length > 0) {
-        subChunks[subChunks.length - 1] += endingPauseSymbol;
+      if (subChunks.length === 0) {
+        if (pauseSeconds > 0 && chunks.length > 0) {
+          pauseEntries.push({ index: chunks.length - 1, seconds: pauseSeconds });
+        }
+        continue;
+      }
+      if (pauseSeconds > 0) {
+        pauseEntries.push({ index: chunkOffset + subChunks.length - 1, seconds: pauseSeconds });
       }
       chunks.push(...subChunks);
+      chunkOffset = chunks.length;
     }
     if (chunks.length === 0) {
       audioStreamer.stop();
       return;
     }
     audioStreamer.totalChunksExpected = chunks.length;
-    chunks.forEach((chunkText2, idx) => {
-      workerPool.dispatch({
-        type: "generate",
-        text: chunkText2,
-        voice: voiceId,
-        speed: currentSpeed,
-        taskId,
-        sequenceId: idx
-      });
-    });
+    for (const entry of pauseEntries) {
+      audioStreamer.pauseMap.set(entry.index, entry.seconds);
+    }
+    audioStreamer.unprocessedChunks = chunks.map((chunkText2, idx) => ({
+      type: "generate",
+      text: chunkText2,
+      voice: voiceId,
+      speed: currentSpeed,
+      taskId,
+      sequenceId: idx
+    }));
+    audioStreamer.dispatchNextChunks();
   } catch (e) {
     console.error("Error in generateTTS:", e);
     reject(e);
@@ -2362,25 +2438,26 @@ jQuery(async () => {
   injectDedicatedUI();
   window.NghiTTS = {
     generate: generateTTS,
-    stop: () => audioStreamer.stop()
+    stop: () => audioStreamer.stop(),
+    togglePause: () => audioStreamer.togglePause()
   };
 });
 var currentPlayingText = null;
 async function playTextWithNghiTTS(text) {
   if ((audioStreamer.isPlaying || audioStreamer.isGenerating) && currentPlayingText === text) {
-    audioStreamer.stop();
-    currentPlayingText = null;
+    audioStreamer.togglePause();
     updateAllButtonsState();
     return;
   }
   audioStreamer.stop();
   currentPlayingText = text;
-  updateAllButtonsState();
   const voiceId = $("#nghitts_voice").val();
   try {
-    await new Promise((resolve, reject) => {
+    const p = new Promise((resolve, reject) => {
       generateTTS(text, voiceId, resolve, reject);
     });
+    updateAllButtonsState();
+    await p;
   } catch (e) {
     console.error("NghiTTS Play Error:", e);
   } finally {
@@ -2389,6 +2466,11 @@ async function playTextWithNghiTTS(text) {
       updateAllButtonsState();
     }
   }
+}
+function stopTextWithNghiTTS() {
+  audioStreamer.stop();
+  currentPlayingText = null;
+  updateAllButtonsState();
 }
 function getReadableText($el) {
   if (!$el || $el.length === 0 || !$el[0]) return "";
@@ -2405,37 +2487,62 @@ function updateAllButtonsState() {
       btnText = getReadableText($this.closest(".mes").find(".mes_text"));
     }
     const $i = $this.find("i");
+    const $stopBtn = $this.attr("id") === "nghitts_quick_play" ? $("#nghitts_quick_stop") : $this.siblings(".nghitts-stop-btn");
     if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
-      $i.removeClass("fa-volume-high").addClass("fa-circle-stop");
-      $this.css("color", "#4CAF50");
+      if (audioStreamer.isPaused) {
+        $i.removeClass("fa-volume-high fa-circle-pause").addClass("fa-circle-play");
+        $this.css("color", "#FF9800");
+      } else {
+        $i.removeClass("fa-volume-high fa-circle-play").addClass("fa-circle-pause");
+        $this.css("color", "#4CAF50");
+      }
+      $stopBtn.show();
     } else {
-      $i.removeClass("fa-circle-stop").addClass("fa-volume-high");
+      $i.removeClass("fa-circle-pause fa-circle-play").addClass("fa-volume-high");
       $this.css("color", "");
+      $stopBtn.hide();
     }
   });
 }
 function addPlayButtonToMessage(mesElement) {
   const $mes = $(mesElement);
-  if ($mes.find(".nghitts-play-btn").length > 0) return;
-  const $btn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn n\xE0y" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
-  $btn.on("mouseenter", () => $btn.css("opacity", "1"));
-  $btn.on("mouseleave", () => $btn.css("opacity", "0.6"));
-  $btn.on("click mousedown touchstart", function(e) {
+  const $existingPlayBtn = $mes.find(".nghitts-play-btn");
+  if ($existingPlayBtn.length > 0) {
+    if ($existingPlayBtn.siblings(".nghitts-stop-btn").length > 0) {
+      return;
+    } else {
+      $existingPlayBtn.remove();
+    }
+  }
+  const $btnGroup = $('<div class="nghitts-btn-group" style="display:flex; gap: 5px; align-items: center;"></div>');
+  const $playBtn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: \u0110\u1ECDc/T\u1EA1m d\u1EEBng tin nh\u1EAFn n\xE0y" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
+  const $stopBtn = $('<div class="mes_button nghitts-stop-btn" title="NghiTTS: H\u1EE7y \u0111\u1ECDc" style="cursor:pointer; opacity: 0.6; display: none; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
+  $playBtn.on("mouseenter", () => $playBtn.css("opacity", "1"));
+  $playBtn.on("mouseleave", () => $playBtn.css("opacity", "0.6"));
+  $stopBtn.on("mouseenter", () => $stopBtn.css("opacity", "1"));
+  $stopBtn.on("mouseleave", () => $stopBtn.css("opacity", "0.6"));
+  $playBtn.on("click mousedown touchstart", function(e) {
     if (e.type !== "click") return;
     e.preventDefault();
     e.stopPropagation();
     const text = getReadableText($mes.find(".mes_text"));
-    console.log("[NghiTTS] Play button clicked. Text length:", text.length);
     if (text) {
       playTextWithNghiTTS(text);
     }
   });
+  $stopBtn.on("click mousedown touchstart", function(e) {
+    if (e.type !== "click") return;
+    e.preventDefault();
+    e.stopPropagation();
+    stopTextWithNghiTTS();
+  });
+  $btnGroup.append($playBtn).append($stopBtn);
   const $buttons = $mes.find(".mes_buttons");
   if ($buttons.length > 0) {
-    $buttons.prepend($btn);
+    $buttons.prepend($btnGroup);
   } else {
-    $btn.css({ position: "absolute", right: "10px", top: "10px" });
-    $mes.append($btn);
+    $btnGroup.css({ position: "absolute", right: "10px", top: "10px" });
+    $mes.append($btnGroup);
   }
 }
 function injectDedicatedUI() {
@@ -2449,29 +2556,43 @@ function injectDedicatedUI() {
     const $sendControls = $("#send_controls");
     const $sendForm = $("#send_form");
     const $target = $sendControls.length > 0 ? $sendControls : $sendForm;
-    if ($target.length > 0 && $("#nghitts_quick_play").length === 0) {
-      const $btn = $('<div id="nghitts_quick_play" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn m\u1EDBi nh\u1EA5t" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
-      $btn.on("mouseenter", () => $btn.css("opacity", "1"));
-      $btn.on("mouseleave", () => $btn.css("opacity", "0.7"));
-      $btn.on("click mousedown touchstart", (e) => {
-        if (e.type !== "click") return;
-        e.preventDefault();
-        e.stopPropagation();
-        const $lastMes = $(".mes:visible .mes_text").last();
-        if ($lastMes.length > 0) {
-          const text = getReadableText($lastMes);
-          console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
-          if (text) {
-            playTextWithNghiTTS(text);
-          }
-        }
-      });
-      if ($("#send_but").length > 0) {
-        $btn.insertBefore("#send_but");
-      } else {
-        $target.append($btn);
+    if ($target.length > 0) {
+      if ($("#nghitts_quick_play").length > 0 && $("#nghitts_quick_stop").length === 0) {
+        $("#nghitts_quick_play").remove();
       }
-      clearInterval(checkInterval);
+      if ($("#nghitts_quick_play").length === 0) {
+        const $playBtn = $('<div id="nghitts_quick_play" title="NghiTTS: \u0110\u1ECDc/T\u1EA1m d\u1EEBng tin nh\u1EAFn m\u1EDBi nh\u1EA5t" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+        const $stopBtn = $('<div id="nghitts_quick_stop" title="NghiTTS: H\u1EE7y \u0111\u1ECDc" style="cursor: pointer; padding: 10px; margin: 0; opacity: 0.7; font-size: 1.2em; display: none; align-items: center; justify-content: center; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
+        $playBtn.on("mouseenter", () => $playBtn.css("opacity", "1"));
+        $playBtn.on("mouseleave", () => $playBtn.css("opacity", "0.7"));
+        $stopBtn.on("mouseenter", () => $stopBtn.css("opacity", "1"));
+        $stopBtn.on("mouseleave", () => $stopBtn.css("opacity", "0.7"));
+        $playBtn.on("click mousedown touchstart", (e) => {
+          if (e.type !== "click") return;
+          e.preventDefault();
+          e.stopPropagation();
+          const $lastMes = $(".mes:visible .mes_text").last();
+          if ($lastMes.length > 0) {
+            const text = getReadableText($lastMes);
+            if (text) {
+              playTextWithNghiTTS(text);
+            }
+          }
+        });
+        $stopBtn.on("click mousedown touchstart", (e) => {
+          if (e.type !== "click") return;
+          e.preventDefault();
+          e.stopPropagation();
+          stopTextWithNghiTTS();
+        });
+        if ($("#send_but").length > 0) {
+          $playBtn.insertBefore("#send_but");
+          $stopBtn.insertBefore("#send_but");
+        } else {
+          $target.append($playBtn).append($stopBtn);
+        }
+        clearInterval(checkInterval);
+      }
     }
   }, 1e3);
 }

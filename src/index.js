@@ -12,8 +12,16 @@ let modelsList = [];
 let currentModel = '';
 let currentSpeed = 1.0;
 const pendingTasks = new Map();
-let nghittsDictionary = JSON.parse(localStorage.getItem('nghitts_dictionary') || '[]');
-let nghittsPauses = JSON.parse(localStorage.getItem('nghitts_pauses') || '[]');
+function safeParseArray(jsonStr) {
+    try {
+        const arr = JSON.parse(jsonStr);
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+let nghittsDictionary = safeParseArray(localStorage.getItem('nghitts_dictionary') || '[]');
+let nghittsPauses = safeParseArray(localStorage.getItem('nghitts_pauses') || '[]');
 
 class AudioStreamer {
     constructor() {
@@ -21,6 +29,7 @@ class AudioStreamer {
         this.nextStartTime = 0;
         this.isPlaying = false;
         this.isGenerating = false;
+        this.isPaused = false;
         this.resolvePromise = null;
         this.sourceNodes = [];
         this.currentTaskId = null;
@@ -30,6 +39,13 @@ class AudioStreamer {
         this.pendingChunks = new Map(); // sequenceId -> chunk data
         this.totalChunksExpected = 0;
         this.chunksCompletedCount = 0;
+        
+        // Drip-feed queue
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
+        
+        // Pause metadata: sequenceId -> pause seconds
+        this.pauseMap = new Map();
     }
     
     startNewSession(resolve, taskId) {
@@ -38,11 +54,12 @@ class AudioStreamer {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            this.audioContext.resume().catch(e => console.warn("AudioContext resume blocked:", e));
         }
         this.nextStartTime = this.audioContext.currentTime + 0.05; // 50ms buffer
         this.isPlaying = true;
         this.isGenerating = true;
+        this.isPaused = false;
         this.resolvePromise = resolve;
         this.sourceNodes = [];
         this.currentTaskId = taskId;
@@ -51,6 +68,9 @@ class AudioStreamer {
         this.pendingChunks.clear();
         this.totalChunksExpected = 0;
         this.chunksCompletedCount = 0;
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
+        this.pauseMap = new Map();
     }
 
     addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
@@ -75,7 +95,25 @@ class AudioStreamer {
         }
         
         this.chunksCompletedCount++;
+        this.inFlightChunks--;
+        
         this.flushQueue();
+        this.dispatchNextChunks();
+    }
+    
+    dispatchNextChunks() {
+        if (!this.isPlaying || !this.currentTaskId || this.isPaused) return;
+        
+        // Always keep (poolSize + 1) chunks in flight to ensure workers never wait
+        const maxInFlight = (typeof workerPool !== 'undefined' ? workerPool.poolSize : 1) + 1;
+        
+        while (this.inFlightChunks < maxInFlight && this.unprocessedChunks.length > 0) {
+            const nextChunk = this.unprocessedChunks.shift();
+            this.inFlightChunks++;
+            if (typeof workerPool !== 'undefined') {
+                workerPool.dispatch(nextChunk);
+            }
+        }
     }
 
     flushQueue() {
@@ -88,20 +126,26 @@ class AudioStreamer {
             // Play any unplayed buffers progressively
             while (seqObj.playCursor < seqObj.buffers.length) {
                 const audioData = seqObj.buffers[seqObj.playCursor];
+                seqObj.playCursor++;
                 
                 // Is this the very last buffer of the chunk?
-                const isLastBuffer = seqObj.isComplete && (seqObj.playCursor === seqObj.buffers.length - 1);
+                const isLastBuffer = seqObj.isComplete && (seqObj.playCursor === seqObj.buffers.length);
                 
                 // Only pass the text (which contains the custom pause symbol) if it's the final buffer
                 // This prevents duplicating extra pauses if a chunk yields multiple progressive buffers
-                this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
-                
-                seqObj.playCursor++;
+                this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, null);
             }
 
             // Only advance to the next chunk if this one is fully complete and all its buffers played
             if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
+                // Apply custom pause from metadata
+                const pauseSec = this.pauseMap.get(this.expectedSequenceId) || 0;
+                if (pauseSec > 0) {
+                    this.nextStartTime += pauseSec;
+                }
+                
                 this.pendingChunks.delete(this.expectedSequenceId);
+                this.pauseMap.delete(this.expectedSequenceId);
                 this.expectedSequenceId++;
             } else {
                 break; // Still waiting for more progressive buffers of this sequenceId
@@ -133,17 +177,7 @@ class AudioStreamer {
         source.start(scheduleTime);
         this.sourceNodes.push(source);
 
-        let extraPause = 0;
-        if (text) {
-            for (const p of nghittsPauses) {
-                if (text.endsWith(p.symbol)) {
-                    extraPause = parseFloat(p.time) || 0;
-                    break;
-                }
-            }
-        }
-
-        this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
+        this.nextStartTime = scheduleTime + audioBuffer.duration;
 
         source.onended = () => {
             const idx = this.sourceNodes.indexOf(source);
@@ -162,6 +196,11 @@ class AudioStreamer {
             }
             this.isPlaying = false;
             this.isGenerating = false;
+            
+            if (this.audioContext && this.audioContext.state === 'running') {
+                this.audioContext.suspend().catch(e => console.error(e));
+            }
+            
             if (this.resolvePromise) {
                 this.resolvePromise();
                 this.resolvePromise = null;
@@ -178,15 +217,38 @@ class AudioStreamer {
         }
         this.isPlaying = false;
         this.isGenerating = false;
+        this.isPaused = false;
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
+        this.pauseMap = new Map();
+        
         for (const source of this.sourceNodes) {
             try {
                 source.stop();
             } catch (e) {}
         }
         this.sourceNodes = [];
+        
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.audioContext.suspend().catch(e => console.error(e));
+        }
+        
         if (this.resolvePromise) {
-            this.resolvePromise();
+            this.resolvePromise(new Error("User stopped TTS"));
             this.resolvePromise = null;
+        }
+    }
+
+    togglePause() {
+        if (!this.audioContext || !this.isPlaying) return;
+        
+        if (this.audioContext.state === 'running') {
+            this.audioContext.suspend();
+            this.isPaused = true;
+        } else if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().catch(e => console.warn("AudioContext resume blocked:", e));
+            this.isPaused = false;
+            this.dispatchNextChunks();
         }
     }
 }
@@ -222,7 +284,7 @@ function updateWorkerStatusUI() {
 
 class WorkerPool {
     constructor() {
-        this.poolSize = parseInt(localStorage.getItem('nghitts_worker_pool_size')) || 2;
+        this.poolSize = parseInt(localStorage.getItem('nghitts_worker_pool_size')) || 1;
         this.workers = [];
         this.currentWorkerIdx = 0;
         this.currentModelName = '';
@@ -450,52 +512,49 @@ function initAdvancedSettingsUI() {
         const modal = document.getElementById('nghitts_payload_modal');
         if (!modal) return;
 
-        // Simulate pre-processing steps
-        let dictText = text;
-        if (nghittsDictionary && nghittsDictionary.length > 0) {
-            nghittsDictionary.forEach(item => {
-                if (item.word && item.pron) {
-                    const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
-                }
-            });
-        }
-
-        let rawChunks = [dictText];
-        if (nghittsPauses && nghittsPauses.length > 0) {
-            let tempRaw = [];
-            for (let rc of rawChunks) {
-                let tempChunk = rc;
-                nghittsPauses.forEach(p => {
-                    if (p.symbol) {
-                        const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        tempChunk = tempChunk.replace(new RegExp(escaped, 'g'), p.symbol + '||SPLIT||');
+        const lines = text.split('\n');
+        let finalChunks = [];
+        for (let idx = 0; idx < lines.length; idx++) {
+            const line = lines[idx];
+            if (!line.trim()) continue;
+            
+            // Emulate dictionary replacement
+            let dictText = line;
+            if (nghittsDictionary && nghittsDictionary.length > 0) {
+                nghittsDictionary.forEach(item => {
+                    if (item.word && item.pron) {
+                        const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
                     }
                 });
-                tempRaw.push(...tempChunk.split('||SPLIT||').filter(s => s.trim().length > 0));
             }
-            rawChunks = tempRaw;
-        }
 
-        let finalChunks = [];
-        for (let rc of rawChunks) {
-            let endingPauseSymbol = null;
-            if (nghittsPauses && nghittsPauses.length > 0) {
-                for (let p of nghittsPauses) {
-                    if (p.symbol && rc.endsWith(p.symbol)) {
-                        endingPauseSymbol = p.symbol;
-                        break;
+            // Emulate the exact custom pause filtering logic from generateTTS
+            let textToProcess = dictText;
+            if (Array.isArray(nghittsPauses) && nghittsPauses.length > 0) {
+                const customPauseMatches = [];
+                for (const p of nghittsPauses) {
+                    if (!p.symbol) continue;
+                    const escapedSymbol = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escapedSymbol, 'g');
+                    let match;
+                    while ((match = regex.exec(dictText)) !== null) {
+                        customPauseMatches.push({ index: match.index, symbol: p.symbol });
+                    }
+                }
+                
+                if (customPauseMatches.length > 0) {
+                    customPauseMatches.sort((a, b) => a.index - b.index);
+                    const firstPause = customPauseMatches[0];
+                    const isStandardPunc = /^[.!?,:;…]+$/.test(firstPause.symbol);
+                    if (!isStandardPunc) {
+                        textToProcess = dictText.replace(firstPause.symbol, ' ');
                     }
                 }
             }
-            
-            const processed = await processTextForTTS(rc);
+
+            const processed = await processTextForTTS(textToProcess);
             const subChunks = await chunkText(processed);
-            
-            if (endingPauseSymbol && subChunks.length > 0) {
-                subChunks[subChunks.length - 1] += endingPauseSymbol;
-            }
-            
             finalChunks.push(...subChunks);
         }
 
@@ -791,27 +850,51 @@ async function generateTTS(text, voiceId, resolve, reject) {
 
         // NOW process and chunk EACH raw chunk!
         let chunks = [];
+        // Store pause metadata separately: chunkIndex -> pauseSeconds
+        const pauseEntries = [];
+        let chunkOffset = 0;
+        
         for (let rc of rawChunks) {
             // Find which custom pause this rc ends with (if any)
-            let endingPauseSymbol = null;
+            let pauseSeconds = 0;
+            let textToProcess = rc;
             if (nghittsPauses && nghittsPauses.length > 0) {
                 for (let p of nghittsPauses) {
                     if (p.symbol && rc.endsWith(p.symbol)) {
-                        endingPauseSymbol = p.symbol;
+                        pauseSeconds = parseFloat(p.time) || 0;
+                        
+                        // Only strip the symbol if it's a non-standard punctuation (like *, -, ||).
+                        // If it's a standard punctuation (!, ?, .), keep it so PiperTTS preserves 
+                        // the correct voice intonation (e.g., exclamation or question tone).
+                        const isStandardPunc = /^[.!?,:;…]+$/.test(p.symbol);
+                        if (!isStandardPunc) {
+                            textToProcess = rc.slice(0, -p.symbol.length);
+                        }
+                        
                         break;
                     }
                 }
             }
             
-            const processed = await processTextForTTS(rc);
+            const processed = await processTextForTTS(textToProcess);
             const subChunks = await chunkText(processed);
             
-            // Append the original pause symbol back to the VERY LAST subChunk so AudioStreamer can see it
-            if (endingPauseSymbol && subChunks.length > 0) {
-                subChunks[subChunks.length - 1] += endingPauseSymbol;
+            // If the raw chunk was only the pause symbol (empty after stripping),
+            // apply the pause to the previous chunk instead
+            if (subChunks.length === 0) {
+                if (pauseSeconds > 0 && chunks.length > 0) {
+                    pauseEntries.push({ index: chunks.length - 1, seconds: pauseSeconds });
+                }
+                continue;
+            }
+            
+            // Tag the LAST subChunk with the pause duration
+            if (pauseSeconds > 0) {
+                pauseEntries.push({ index: chunkOffset + subChunks.length - 1, seconds: pauseSeconds });
             }
             
             chunks.push(...subChunks);
+            chunkOffset = chunks.length;
         }
         
         if (chunks.length === 0) {
@@ -821,16 +904,21 @@ async function generateTTS(text, voiceId, resolve, reject) {
         
         audioStreamer.totalChunksExpected = chunks.length;
         
-        chunks.forEach((chunkText, idx) => {
-            workerPool.dispatch({
-                type: 'generate',
-                text: chunkText,
-                voice: voiceId,
-                speed: currentSpeed,
-                taskId: taskId,
-                sequenceId: idx
-            });
-        });
+        // Store pause metadata in AudioStreamer
+        for (const entry of pauseEntries) {
+            audioStreamer.pauseMap.set(entry.index, entry.seconds);
+        }
+        
+        audioStreamer.unprocessedChunks = chunks.map((chunkText, idx) => ({
+            type: 'generate',
+            text: chunkText,
+            voice: voiceId,
+            speed: currentSpeed,
+            taskId: taskId,
+            sequenceId: idx
+        }));
+        
+        audioStreamer.dispatchNextChunks();
     } catch (e) {
         console.error("Error in generateTTS:", e);
         reject(e);
@@ -847,7 +935,8 @@ jQuery(async () => {
     // Export globally for manual testing or other scripts
     window.NghiTTS = { 
         generate: generateTTS,
-        stop: () => audioStreamer.stop()
+        stop: () => audioStreamer.stop(),
+        togglePause: () => audioStreamer.togglePause()
     };
 });
 
@@ -857,10 +946,9 @@ jQuery(async () => {
 let currentPlayingText = null;
 
 async function playTextWithNghiTTS(text) {
-    // If already playing this exact text, stop it
+    // If already playing this exact text, toggle pause
     if ((audioStreamer.isPlaying || audioStreamer.isGenerating) && currentPlayingText === text) {
-        audioStreamer.stop();
-        currentPlayingText = null;
+        audioStreamer.togglePause();
         updateAllButtonsState();
         return;
     }
@@ -869,14 +957,15 @@ async function playTextWithNghiTTS(text) {
     audioStreamer.stop();
     
     currentPlayingText = text;
-    updateAllButtonsState();
     
     const voiceId = $('#nghitts_voice').val();
     
     try {
-        await new Promise((resolve, reject) => {
+        const p = new Promise((resolve, reject) => {
             generateTTS(text, voiceId, resolve, reject);
         });
+        updateAllButtonsState(); // Update UI instantly after session starts
+        await p;
     } catch (e) {
         console.error("NghiTTS Play Error:", e);
     } finally {
@@ -885,6 +974,12 @@ async function playTextWithNghiTTS(text) {
             updateAllButtonsState();
         }
     }
+}
+
+function stopTextWithNghiTTS() {
+    audioStreamer.stop();
+    currentPlayingText = null;
+    updateAllButtonsState();
 }
 
 function getReadableText($el) {
@@ -905,42 +1000,75 @@ function updateAllButtonsState() {
         }
         
         const $i = $this.find('i');
+        // Get the corresponding stop button
+        const $stopBtn = $this.attr('id') === 'nghitts_quick_play' 
+            ? $('#nghitts_quick_stop') 
+            : $this.siblings('.nghitts-stop-btn');
+
         if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
-            $i.removeClass('fa-volume-high').addClass('fa-circle-stop');
-            $this.css('color', '#4CAF50'); // green active
+            if (audioStreamer.isPaused) {
+                $i.removeClass('fa-volume-high fa-circle-pause').addClass('fa-circle-play');
+                $this.css('color', '#FF9800'); // orange paused
+            } else {
+                $i.removeClass('fa-volume-high fa-circle-play').addClass('fa-circle-pause');
+                $this.css('color', '#4CAF50'); // green active
+            }
+            $stopBtn.show();
         } else {
-            $i.removeClass('fa-circle-stop').addClass('fa-volume-high');
+            $i.removeClass('fa-circle-pause fa-circle-play').addClass('fa-volume-high');
             $this.css('color', '');
+            $stopBtn.hide();
         }
     });
 }
 
 function addPlayButtonToMessage(mesElement) {
     const $mes = $(mesElement);
-    if ($mes.find('.nghitts-play-btn').length > 0) return;
+    const $existingPlayBtn = $mes.find('.nghitts-play-btn');
     
-    const $btn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: Đọc tin nhắn này" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
+    if ($existingPlayBtn.length > 0) {
+        if ($existingPlayBtn.siblings('.nghitts-stop-btn').length > 0) {
+            return; // Already has the new group
+        } else {
+            $existingPlayBtn.remove(); // Remove old standalone button
+        }
+    }
     
-    $btn.on('mouseenter', () => $btn.css('opacity', '1'));
-    $btn.on('mouseleave', () => $btn.css('opacity', '0.6'));
+    const $btnGroup = $('<div class="nghitts-btn-group" style="display:flex; gap: 5px; align-items: center;"></div>');
     
-    $btn.on('click mousedown touchstart', function(e) {
+    const $playBtn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: Đọc/Tạm dừng tin nhắn này" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
+    const $stopBtn = $('<div class="mes_button nghitts-stop-btn" title="NghiTTS: Hủy đọc" style="cursor:pointer; opacity: 0.6; display: none; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
+    
+    $playBtn.on('mouseenter', () => $playBtn.css('opacity', '1'));
+    $playBtn.on('mouseleave', () => $playBtn.css('opacity', '0.6'));
+    $stopBtn.on('mouseenter', () => $stopBtn.css('opacity', '1'));
+    $stopBtn.on('mouseleave', () => $stopBtn.css('opacity', '0.6'));
+    
+    $playBtn.on('click mousedown touchstart', function(e) {
         if (e.type !== 'click') return; // process click only
         e.preventDefault();
         e.stopPropagation();
         const text = getReadableText($mes.find('.mes_text'));
-        console.log("[NghiTTS] Play button clicked. Text length:", text.length);
         if (text) {
             playTextWithNghiTTS(text);
         }
     });
     
+    $stopBtn.on('click mousedown touchstart', function(e) {
+        if (e.type !== 'click') return;
+        e.preventDefault();
+        e.stopPropagation();
+        stopTextWithNghiTTS();
+    });
+    
+    $btnGroup.append($playBtn).append($stopBtn);
+    
     const $buttons = $mes.find('.mes_buttons');
     if ($buttons.length > 0) {
-        $buttons.prepend($btn);
+        $buttons.prepend($btnGroup);
     } else {
-        $btn.css({ position: 'absolute', right: '10px', top: '10px' });
-        $mes.append($btn);
+        $btnGroup.css({ position: 'absolute', right: '10px', top: '10px' });
+        $mes.append($btnGroup);
     }
 }
 
@@ -961,13 +1089,22 @@ function injectDedicatedUI() {
         const $sendForm = $('#send_form');
         const $target = $sendControls.length > 0 ? $sendControls : $sendForm;
         
-        if ($target.length > 0 && $('#nghitts_quick_play').length === 0) {
-            const $btn = $('<div id="nghitts_quick_play" title="NghiTTS: Đọc tin nhắn mới nhất" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+        if ($target.length > 0) {
+            // Clean up old quick play if it lacks the stop button
+            if ($('#nghitts_quick_play').length > 0 && $('#nghitts_quick_stop').length === 0) {
+                $('#nghitts_quick_play').remove();
+            }
             
-            $btn.on('mouseenter', () => $btn.css('opacity', '1'));
-            $btn.on('mouseleave', () => $btn.css('opacity', '0.7'));
+            if ($('#nghitts_quick_play').length === 0) {
+                const $playBtn = $('<div id="nghitts_quick_play" title="NghiTTS: Đọc/Tạm dừng tin nhắn mới nhất" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+            const $stopBtn = $('<div id="nghitts_quick_stop" title="NghiTTS: Hủy đọc" style="cursor: pointer; padding: 10px; margin: 0; opacity: 0.7; font-size: 1.2em; display: none; align-items: center; justify-content: center; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
             
-            $btn.on('click mousedown touchstart', (e) => {
+            $playBtn.on('mouseenter', () => $playBtn.css('opacity', '1'));
+            $playBtn.on('mouseleave', () => $playBtn.css('opacity', '0.7'));
+            $stopBtn.on('mouseenter', () => $stopBtn.css('opacity', '1'));
+            $stopBtn.on('mouseleave', () => $stopBtn.css('opacity', '0.7'));
+            
+            $playBtn.on('click mousedown touchstart', (e) => {
                 if (e.type !== 'click') return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -975,19 +1112,27 @@ function injectDedicatedUI() {
                 const $lastMes = $('.mes:visible .mes_text').last();
                 if ($lastMes.length > 0) {
                     const text = getReadableText($lastMes);
-                    console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
                     if (text) {
                         playTextWithNghiTTS(text);
                     }
                 }
             });
+
+            $stopBtn.on('click mousedown touchstart', (e) => {
+                if (e.type !== 'click') return;
+                e.preventDefault();
+                e.stopPropagation();
+                stopTextWithNghiTTS();
+            });
             
             if ($('#send_but').length > 0) {
-                $btn.insertBefore('#send_but');
+                $playBtn.insertBefore('#send_but');
+                $stopBtn.insertBefore('#send_but');
             } else {
-                $target.append($btn);
+                $target.append($playBtn).append($stopBtn);
             }
             clearInterval(checkInterval);
+            }
         }
     }, 1000);
 }
