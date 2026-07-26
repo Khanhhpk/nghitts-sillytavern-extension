@@ -1347,7 +1347,9 @@ async function loadWordReplacementMap() {
         const original = match[1].trim().toLowerCase();
         const transliteration = match[2].trim();
         if (original && transliteration) {
-          replacementMap.set(original, transliteration);
+          const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escapedOriginal}\\b`, "gi");
+          replacementMap.set(original, { transliteration, regex });
         }
       }
     }
@@ -1374,7 +1376,9 @@ async function loadAcronymMap() {
         const acronym = match[1].trim();
         const transliteration = match[2].trim();
         if (acronym && transliteration) {
-          acronymMap.set(acronym.toLowerCase(), transliteration);
+          const escapedAcronym = acronym.toLowerCase().replace(/[+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escapedAcronym}\\b`, "gi");
+          acronymMap.set(acronym.toLowerCase(), { transliteration, regex });
         }
       }
     }
@@ -1481,9 +1485,8 @@ async function convertAcronyms(text, acronymMap, config = null) {
   }
   let result = text;
   const convertedAcronyms = [];
-  for (const [acronym, transliteration] of acronymMap) {
-    const escapedAcronym = acronym.replace(/[+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escapedAcronym}\\b`, "gi");
+  for (const [acronym, data] of acronymMap) {
+    const { transliteration, regex } = data;
     const beforeReplace = result;
     result = result.replace(regex, (match) => {
       return transliteration;
@@ -1506,9 +1509,8 @@ async function replaceNonVietnameseWords(text, replacementMap, config = null) {
   }
   let result = text;
   const replacedWords = [];
-  for (const [original, transliteration] of replacementMap) {
-    const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escapedOriginal}\\b`, "gi");
+  for (const [original, data] of replacementMap) {
+    const { transliteration, regex } = data;
     const beforeReplace = result;
     result = result.replace(regex, (match) => {
       if (match[0] === match[0].toUpperCase()) {

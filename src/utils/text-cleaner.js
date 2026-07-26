@@ -35,7 +35,9 @@ async function loadWordReplacementMap() {
                 const original = match[1].trim().toLowerCase();
                 const transliteration = match[2].trim();
                 if (original && transliteration) {
-                    replacementMap.set(original, transliteration);
+                    const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
+                    replacementMap.set(original, { transliteration, regex });
                 }
             }
         }
@@ -78,8 +80,10 @@ async function loadAcronymMap() {
                 const acronym = match[1].trim();
                 const transliteration = match[2].trim();
                 if (acronym && transliteration) {
+                    const escapedAcronym = acronym.toLowerCase().replace(/[+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedAcronym}\\b`, 'gi');
                     // Store lowercase for case-insensitive matching
-                    acronymMap.set(acronym.toLowerCase(), transliteration);
+                    acronymMap.set(acronym.toLowerCase(), { transliteration, regex });
                 }
             }
         }
@@ -266,17 +270,8 @@ export async function convertAcronyms(text, acronymMap, config = null) {
     const convertedAcronyms = [];
 
     // Process each acronym entry (already sorted by length, longest first)
-    for (const [acronym, transliteration] of acronymMap) {
-        // Escape special regex characters in the acronym
-        // Note: dots in acronyms (e.g., "tp.hcm") should match literal dots, so we don't escape them
-        const escapedAcronym = acronym.replace(/[+?^${}()|[\]\\]/g, '\\$&');
-        // Dots are not escaped - they match literal dots
-        
-        // Create regex for case-insensitive matching
-        // Use word boundaries - they work correctly with dots (dot is non-word char)
-        // Pattern: word boundary + acronym + word boundary
-        // For "tp.hcm", \b matches before 't' and after 'm', dot is non-word so it's fine
-        const regex = new RegExp(`\\b${escapedAcronym}\\b`, 'gi');
+    for (const [acronym, data] of acronymMap) {
+        const { transliteration, regex } = data;
         
         // Replace all occurrences
         const beforeReplace = result;
@@ -317,14 +312,8 @@ export async function replaceNonVietnameseWords(text, replacementMap, config = n
     const replacedWords = [];
 
     // Process each replacement entry (already sorted by length, longest first)
-    for (const [original, transliteration] of replacementMap) {
-        // Create regex to match whole word/phrase only
-        // Escape special regex characters in the original word
-        const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        
-        // For multi-word phrases, match with word boundaries at start and end
-        // For single words, use word boundaries
-        const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
+    for (const [original, data] of replacementMap) {
+        const { transliteration, regex } = data;
         
         // Replace all occurrences
         const beforeReplace = result;
