@@ -857,8 +857,15 @@ async function generateTTS(text, voiceId, resolve, reject) {
                 for (let p of nghittsPauses) {
                     if (p.symbol && rc.endsWith(p.symbol)) {
                         pauseSeconds = parseFloat(p.time) || 0;
-                        // Strip the pause symbol BEFORE text processing
-                        textToProcess = rc.slice(0, -p.symbol.length);
+                        
+                        // Only strip the symbol if it's a non-standard punctuation (like *, -, ||).
+                        // If it's a standard punctuation (!, ?, .), keep it so PiperTTS preserves 
+                        // the correct voice intonation (e.g., exclamation or question tone).
+                        const isStandardPunc = /^[.!?,:;…]+$/.test(p.symbol);
+                        if (!isStandardPunc) {
+                            textToProcess = rc.slice(0, -p.symbol.length);
+                        }
+                        
                         break;
                     }
                 }
