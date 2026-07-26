@@ -947,8 +947,11 @@ function normalizePunctuation(text) {
     text = text.replace(/\.{3,}/g, '...');
     text = text.replace(/…/g, '...');
     
-    // Remove multiple punctuation
-    text = text.replace(/([!?.]){2,}/g, '$1');
+    // Remove multiple punctuation, but preserve ellipsis (...)
+    text = text.replace(/([!?.]){2,}/g, (match, p1) => {
+        if (p1 === '.') return match.length >= 3 ? '...' : '.';
+        return p1;
+    });
     
     return text;
 }

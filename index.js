@@ -94,8 +94,14 @@ var ModelCache = class {
     });
   }
   async checkExists(url) {
-    const data = await this.get(url);
-    return data !== null;
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], "readonly");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.count(url);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result > 0);
+    });
   }
   async getAllKeys() {
     await this.init();
@@ -847,7 +853,10 @@ function normalizePunctuation(text) {
   text = text.replace(/[–—−]/g, "-");
   text = text.replace(/\.{3,}/g, "...");
   text = text.replace(/…/g, "...");
-  text = text.replace(/([!?.]){2,}/g, "$1");
+  text = text.replace(/([!?.]){2,}/g, (match, p1) => {
+    if (p1 === ".") return match.length >= 3 ? "..." : ".";
+    return p1;
+  });
   return text;
 }
 function cleanWhitespace(text) {
@@ -1542,7 +1551,7 @@ function cleanTextForTTS(text) {
     return "";
   }
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|[\u{FE0F}]|[\u{200D}]/gu;
-  const cleanedText = text.replace(emojiRegex, " ").replace(/[()]/g, ", ").replace(/[\\¯]/g, " ").replace(/["“”'‘’]/g, " ").replace(/—+/g, ", ").replace(/_/g, " ").replace(/(?<!\d)-(?!\d)/g, " ").replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, " ").replace(/[ \t]*,[ \t]*(,[ \t]*)+/g, ", ").replace(/[ \t]+/g, " ");
+  const cleanedText = text.replace(emojiRegex, " ").replace(/[()]/g, ", ").replace(/[\\¯]/g, " ").replace(/["“”'‘’]/g, " ").replace(/—+/g, ", ").replace(/–/g, "-").replace(/_/g, " ").replace(/(?<!\d)-(?!\d)/g, " ").replace(/…/g, "...").replace(/[^\u0000-\u024F\u1E00-\u1EFF]/g, " ").replace(/[ \t]*,[ \t]*(,[ \t]*)+/g, ", ").replace(/[ \t]+/g, " ");
   return cleanedText.trim();
 }
 async function processTextForTTS(text) {
@@ -1696,8 +1705,16 @@ var modelsList = [];
 var currentModel = "";
 var currentSpeed = 1;
 var pendingTasks = /* @__PURE__ */ new Map();
-var nghittsDictionary = JSON.parse(localStorage.getItem("nghitts_dictionary") || "[]");
-var nghittsPauses = JSON.parse(localStorage.getItem("nghitts_pauses") || "[]");
+function safeParseArray(jsonStr) {
+  try {
+    const arr = JSON.parse(jsonStr);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+var nghittsDictionary = safeParseArray(localStorage.getItem("nghitts_dictionary") || "[]");
+var nghittsPauses = safeParseArray(localStorage.getItem("nghitts_pauses") || "[]");
 var AudioStreamer = class {
   constructor() {
     this.audioContext = null;
@@ -1722,7 +1739,7 @@ var AudioStreamer = class {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     if (this.audioContext.state === "suspended") {
-      this.audioContext.resume();
+      this.audioContext.resume().catch((e) => console.warn("AudioContext resume blocked:", e));
     }
     this.nextStartTime = this.audioContext.currentTime + 0.05;
     this.isPlaying = true;
@@ -1862,7 +1879,7 @@ var AudioStreamer = class {
       this.audioContext.suspend().catch((e) => console.error(e));
     }
     if (this.resolvePromise) {
-      this.resolvePromise();
+      this.resolvePromise(new Error("User stopped TTS"));
       this.resolvePromise = null;
     }
   }
@@ -1872,7 +1889,7 @@ var AudioStreamer = class {
       this.audioContext.suspend();
       this.isPaused = true;
     } else if (this.audioContext.state === "suspended") {
-      this.audioContext.resume();
+      this.audioContext.resume().catch((e) => console.warn("AudioContext resume blocked:", e));
       this.isPaused = false;
       this.dispatchNextChunks();
     }
@@ -2086,46 +2103,43 @@ function initAdvancedSettingsUI() {
     }
     const modal = document.getElementById("nghitts_payload_modal");
     if (!modal) return;
-    let dictText = text;
-    if (nghittsDictionary && nghittsDictionary.length > 0) {
-      nghittsDictionary.forEach((item) => {
-        if (item.word && item.pron) {
-          const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          dictText = dictText.replace(new RegExp(escapedWord, "gi"), item.pron);
-        }
-      });
-    }
-    let rawChunks = [dictText];
-    if (nghittsPauses && nghittsPauses.length > 0) {
-      let tempRaw = [];
-      for (let rc of rawChunks) {
-        let tempChunk = rc;
-        nghittsPauses.forEach((p) => {
-          if (p.symbol) {
-            const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            tempChunk = tempChunk.replace(new RegExp(escaped, "g"), p.symbol + "||SPLIT||");
+    const lines = text.split("\n");
+    let finalChunks = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      if (!line.trim()) continue;
+      let dictText = line;
+      if (nghittsDictionary && nghittsDictionary.length > 0) {
+        nghittsDictionary.forEach((item) => {
+          if (item.word && item.pron) {
+            const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            dictText = dictText.replace(new RegExp(escapedWord, "gi"), item.pron);
           }
         });
-        tempRaw.push(...tempChunk.split("||SPLIT||").filter((s) => s.trim().length > 0));
       }
-      rawChunks = tempRaw;
-    }
-    let finalChunks = [];
-    for (let rc of rawChunks) {
-      let endingPauseSymbol = null;
-      if (nghittsPauses && nghittsPauses.length > 0) {
-        for (let p of nghittsPauses) {
-          if (p.symbol && rc.endsWith(p.symbol)) {
-            endingPauseSymbol = p.symbol;
-            break;
+      let textToProcess = dictText;
+      if (Array.isArray(nghittsPauses) && nghittsPauses.length > 0) {
+        const customPauseMatches = [];
+        for (const p of nghittsPauses) {
+          if (!p.symbol) continue;
+          const escapedSymbol = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(escapedSymbol, "g");
+          let match;
+          while ((match = regex.exec(dictText)) !== null) {
+            customPauseMatches.push({ index: match.index, symbol: p.symbol });
+          }
+        }
+        if (customPauseMatches.length > 0) {
+          customPauseMatches.sort((a, b) => a.index - b.index);
+          const firstPause = customPauseMatches[0];
+          const isStandardPunc = /^[.!?,:;…]+$/.test(firstPause.symbol);
+          if (!isStandardPunc) {
+            textToProcess = dictText.replace(firstPause.symbol, " ");
           }
         }
       }
-      const processed = await processTextForTTS(rc);
+      const processed = await processTextForTTS(textToProcess);
       const subChunks = await chunkText(processed);
-      if (endingPauseSymbol && subChunks.length > 0) {
-        subChunks[subChunks.length - 1] += endingPauseSymbol;
-      }
       finalChunks.push(...subChunks);
     }
     const $content = $("#nghitts_payload_content");
@@ -2374,7 +2388,10 @@ async function generateTTS(text, voiceId, resolve, reject) {
         for (let p of nghittsPauses) {
           if (p.symbol && rc.endsWith(p.symbol)) {
             pauseSeconds = parseFloat(p.time) || 0;
-            textToProcess = rc.slice(0, -p.symbol.length);
+            const isStandardPunc = /^[.!?,:;…]+$/.test(p.symbol);
+            if (!isStandardPunc) {
+              textToProcess = rc.slice(0, -p.symbol.length);
+            }
             break;
           }
         }
