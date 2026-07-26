@@ -295,7 +295,7 @@ function numberToWords(numStr) {
   return numStr.split("").map((d) => DIGITS[d] || d).join(" ");
 }
 function removeThousandSeparators(text) {
-  return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])/g, (match) => {
+  return text.replace(/(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.])/g, (match) => {
     const numberWithoutDots = match.replace(/\./g, "");
     return numberWithoutDots;
   });
@@ -629,7 +629,7 @@ function convertDate(text) {
     }
     return match;
   });
-  text = text.replace(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/g, (match, day, month, year) => {
+  text = text.replace(/(?:ngày\s+)?(\d{1,2})[/-](\d{1,2})[/-](\d{4})/gi, (match, day, month, year) => {
     if (isValidDate(day, month, year)) {
       const result = `ng\xE0y ${numberToWords(day)} th\xE1ng ${numberToWords(month)} n\u0103m ${numberToWords(year)}`;
       matches.push({ pattern: "DD/MM/YYYY", match, result });
@@ -651,13 +651,13 @@ function convertDate(text) {
     }
     return match;
   });
-  text = text.replace(/(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/g, (match, day, month, offset, fullText) => {
+  text = text.replace(/(?:ngày\s+)?(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)/gi, (match, day, month, offset, fullText) => {
     const afterMatch = fullText.slice(offset + match.length);
     if (/\s*%/.test(afterMatch) || /\d+\s*%/.test(afterMatch)) {
       return match;
     }
     if (isValidDate(day, month)) {
-      const result = `${numberToWords(day)} th\xE1ng ${numberToWords(month)}`;
+      const result = `ng\xE0y ${numberToWords(day)} th\xE1ng ${numberToWords(month)}`;
       matches.push({ pattern: "DD/MM", match, result });
       return result;
     }
