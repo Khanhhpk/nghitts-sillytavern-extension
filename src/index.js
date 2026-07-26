@@ -883,14 +883,15 @@ async function playTextWithNghiTTS(text) {
     audioStreamer.stop();
     
     currentPlayingText = text;
-    updateAllButtonsState();
     
     const voiceId = $('#nghitts_voice').val();
     
     try {
-        await new Promise((resolve, reject) => {
+        const p = new Promise((resolve, reject) => {
             generateTTS(text, voiceId, resolve, reject);
         });
+        updateAllButtonsState(); // Update UI instantly after session starts
+        await p;
     } catch (e) {
         console.error("NghiTTS Play Error:", e);
     } finally {
@@ -949,7 +950,15 @@ function updateAllButtonsState() {
 
 function addPlayButtonToMessage(mesElement) {
     const $mes = $(mesElement);
-    if ($mes.find('.nghitts-play-btn').length > 0) return;
+    const $existingPlayBtn = $mes.find('.nghitts-play-btn');
+    
+    if ($existingPlayBtn.length > 0) {
+        if ($existingPlayBtn.siblings('.nghitts-stop-btn').length > 0) {
+            return; // Already has the new group
+        } else {
+            $existingPlayBtn.remove(); // Remove old standalone button
+        }
+    }
     
     const $btnGroup = $('<div class="nghitts-btn-group" style="display:flex; gap: 5px; align-items: center;"></div>');
     
@@ -1006,8 +1015,14 @@ function injectDedicatedUI() {
         const $sendForm = $('#send_form');
         const $target = $sendControls.length > 0 ? $sendControls : $sendForm;
         
-        if ($target.length > 0 && $('#nghitts_quick_play').length === 0) {
-            const $playBtn = $('<div id="nghitts_quick_play" title="NghiTTS: Đọc/Tạm dừng tin nhắn mới nhất" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+        if ($target.length > 0) {
+            // Clean up old quick play if it lacks the stop button
+            if ($('#nghitts_quick_play').length > 0 && $('#nghitts_quick_stop').length === 0) {
+                $('#nghitts_quick_play').remove();
+            }
+            
+            if ($('#nghitts_quick_play').length === 0) {
+                const $playBtn = $('<div id="nghitts_quick_play" title="NghiTTS: Đọc/Tạm dừng tin nhắn mới nhất" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
             const $stopBtn = $('<div id="nghitts_quick_stop" title="NghiTTS: Hủy đọc" style="cursor: pointer; padding: 10px; margin: 0; opacity: 0.7; font-size: 1.2em; display: none; align-items: center; justify-content: center; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
             
             $playBtn.on('mouseenter', () => $playBtn.css('opacity', '1'));
