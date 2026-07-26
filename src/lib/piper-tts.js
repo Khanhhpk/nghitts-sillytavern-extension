@@ -37,8 +37,9 @@ function mergePhonemizerOutputPreservePunct(text, phonemes) {
     return String(phonemes ?? '');
   }
 
-  // Collect clause separators from original text (commas/semicolon/colon)
-  const separators = Array.from(text.matchAll(/[,;:]/g), (m) => m[0]);
+  // Collect separators from original text (commas/semicolon/colon/period/question/exclamation/ellipsis)
+  // This lets the model "see" all punctuation and pause naturally, especially if chunkText combined short sentences
+  const separators = Array.from(text.matchAll(/[,;:!?.…]/g), (m) => m[0]);
 
   let result = '';
   let sepIdx = 0;
