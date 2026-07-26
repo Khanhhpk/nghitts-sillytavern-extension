@@ -12,8 +12,16 @@ let modelsList = [];
 let currentModel = '';
 let currentSpeed = 1.0;
 const pendingTasks = new Map();
-let nghittsDictionary = JSON.parse(localStorage.getItem('nghitts_dictionary') || '[]');
-let nghittsPauses = JSON.parse(localStorage.getItem('nghitts_pauses') || '[]');
+function safeParseArray(jsonStr) {
+    try {
+        const arr = JSON.parse(jsonStr);
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+let nghittsDictionary = safeParseArray(localStorage.getItem('nghitts_dictionary') || '[]');
+let nghittsPauses = safeParseArray(localStorage.getItem('nghitts_pauses') || '[]');
 
 class AudioStreamer {
     constructor() {
@@ -46,7 +54,7 @@ class AudioStreamer {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            this.audioContext.resume().catch(e => console.warn("AudioContext resume blocked:", e));
         }
         this.nextStartTime = this.audioContext.currentTime + 0.05; // 50ms buffer
         this.isPlaying = true;
@@ -226,7 +234,7 @@ class AudioStreamer {
         }
         
         if (this.resolvePromise) {
-            this.resolvePromise();
+            this.resolvePromise(new Error("User stopped TTS"));
             this.resolvePromise = null;
         }
     }
@@ -238,7 +246,7 @@ class AudioStreamer {
             this.audioContext.suspend();
             this.isPaused = true;
         } else if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            this.audioContext.resume().catch(e => console.warn("AudioContext resume blocked:", e));
             this.isPaused = false;
             this.dispatchNextChunks();
         }
