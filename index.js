@@ -1334,7 +1334,11 @@ var non_vietnamese_words_default = "original,transliteration\r\noriginal,\xF4-ri
 var TRANSLITERATION_SKIP_WORDS = /* @__PURE__ */ new Set(["mc"]);
 var acronymMapCache = null;
 var configCache = null;
+var wordReplacementMapCache = null;
 async function loadWordReplacementMap() {
+  if (wordReplacementMapCache !== null) {
+    return wordReplacementMapCache;
+  }
   try {
     const csvText = non_vietnamese_words_default;
     const lines = csvText.split("\n");
@@ -1354,10 +1358,12 @@ async function loadWordReplacementMap() {
       }
     }
     const sortedEntries = Array.from(replacementMap.entries()).sort((a, b) => b[0].length - a[0].length);
-    return new Map(sortedEntries);
+    wordReplacementMapCache = new Map(sortedEntries);
+    return wordReplacementMapCache;
   } catch (error) {
     console.error("Error loading word replacement CSV:", error);
-    return /* @__PURE__ */ new Map();
+    wordReplacementMapCache = /* @__PURE__ */ new Map();
+    return wordReplacementMapCache;
   }
 }
 async function loadAcronymMap() {

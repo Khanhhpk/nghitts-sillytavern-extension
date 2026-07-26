@@ -13,12 +13,18 @@ let acronymMapCache = null;
 // Cache for the config
 let configCache = null;
 
+// Cache for the word replacement map
+let wordReplacementMapCache = null;
+
 /**
  * Load and parse the CSV file containing non-Vietnamese word replacements
  * Returns a Map sorted by length (longest first) for proper matching priority
- * Note: This function does NOT cache the result - it always fetches fresh data
  */
 async function loadWordReplacementMap() {
+    if (wordReplacementMapCache !== null) {
+        return wordReplacementMapCache;
+    }
+
     try {
         const csvText = wordReplacementCsvText;
         const lines = csvText.split('\n');
@@ -47,10 +53,12 @@ async function loadWordReplacementMap() {
             .sort((a, b) => b[0].length - a[0].length);
 
         // Create a new Map with sorted entries
-        return new Map(sortedEntries);
+        wordReplacementMapCache = new Map(sortedEntries);
+        return wordReplacementMapCache;
     } catch (error) {
         console.error('Error loading word replacement CSV:', error);
-        return new Map();
+        wordReplacementMapCache = new Map();
+        return wordReplacementMapCache;
     }
 }
 
