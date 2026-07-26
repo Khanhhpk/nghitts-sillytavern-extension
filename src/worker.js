@@ -145,7 +145,7 @@ async function handleMessage(data) {
         },
         taskId,
         sequenceId
-      });
+      }, [audio.audio.buffer]);
     }
     self.postMessage({ status: "complete", taskId, sequenceId });
   } catch (error) {

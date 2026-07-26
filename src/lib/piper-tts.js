@@ -183,7 +183,8 @@ export class PiperTTS {
         executionProviders: [{
           name: 'wasm',
           simd: true
-        }]
+        }],
+        graphOptimizationLevel: 'all'
       });
       
       return new PiperTTS(voiceConfig, session);
