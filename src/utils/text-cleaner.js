@@ -367,6 +367,8 @@ export function cleanTextForTTS(text) {
         .replace(/["“”'‘’]/g, ' ')
         // Convert em dashes to commas for natural pauses if they weren't configured in custom pauses
         .replace(/—+/g, ', ')
+        // Convert en dashes to standard dashes so they survive the non-Latin filter (critical for number/date ranges)
+        .replace(/–/g, '-')
         // Remove underscores
         .replace(/_/g, ' ')
         // Remove standard dashes but preserve those between numbers (for date ranges like 25-26, year ranges like 1873-1907)
