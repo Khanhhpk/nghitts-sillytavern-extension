@@ -1058,6 +1058,7 @@ function injectDedicatedUI() {
                 $target.append($playBtn).append($stopBtn);
             }
             clearInterval(checkInterval);
+            }
         }
     }, 1000);
 }

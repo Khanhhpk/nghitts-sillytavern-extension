@@ -1696,6 +1696,7 @@ var AudioStreamer = class {
     this.nextStartTime = 0;
     this.isPlaying = false;
     this.isGenerating = false;
+    this.isPaused = false;
     this.resolvePromise = null;
     this.sourceNodes = [];
     this.currentTaskId = null;
@@ -1715,6 +1716,7 @@ var AudioStreamer = class {
     this.nextStartTime = this.audioContext.currentTime + 0.05;
     this.isPlaying = true;
     this.isGenerating = true;
+    this.isPaused = false;
     this.resolvePromise = resolve;
     this.sourceNodes = [];
     this.currentTaskId = taskId;
@@ -1829,6 +1831,16 @@ var AudioStreamer = class {
     if (this.resolvePromise) {
       this.resolvePromise();
       this.resolvePromise = null;
+    }
+  }
+  togglePause() {
+    if (!this.audioContext || !this.isPlaying) return;
+    if (this.audioContext.state === "running") {
+      this.audioContext.suspend();
+      this.isPaused = true;
+    } else if (this.audioContext.state === "suspended") {
+      this.audioContext.resume();
+      this.isPaused = false;
     }
   }
 };
@@ -2362,25 +2374,26 @@ jQuery(async () => {
   injectDedicatedUI();
   window.NghiTTS = {
     generate: generateTTS,
-    stop: () => audioStreamer.stop()
+    stop: () => audioStreamer.stop(),
+    togglePause: () => audioStreamer.togglePause()
   };
 });
 var currentPlayingText = null;
 async function playTextWithNghiTTS(text) {
   if ((audioStreamer.isPlaying || audioStreamer.isGenerating) && currentPlayingText === text) {
-    audioStreamer.stop();
-    currentPlayingText = null;
+    audioStreamer.togglePause();
     updateAllButtonsState();
     return;
   }
   audioStreamer.stop();
   currentPlayingText = text;
-  updateAllButtonsState();
   const voiceId = $("#nghitts_voice").val();
   try {
-    await new Promise((resolve, reject) => {
+    const p = new Promise((resolve, reject) => {
       generateTTS(text, voiceId, resolve, reject);
     });
+    updateAllButtonsState();
+    await p;
   } catch (e) {
     console.error("NghiTTS Play Error:", e);
   } finally {
@@ -2389,6 +2402,11 @@ async function playTextWithNghiTTS(text) {
       updateAllButtonsState();
     }
   }
+}
+function stopTextWithNghiTTS() {
+  audioStreamer.stop();
+  currentPlayingText = null;
+  updateAllButtonsState();
 }
 function getReadableText($el) {
   if (!$el || $el.length === 0 || !$el[0]) return "";
@@ -2405,37 +2423,62 @@ function updateAllButtonsState() {
       btnText = getReadableText($this.closest(".mes").find(".mes_text"));
     }
     const $i = $this.find("i");
+    const $stopBtn = $this.attr("id") === "nghitts_quick_play" ? $("#nghitts_quick_stop") : $this.siblings(".nghitts-stop-btn");
     if (isPlaying && btnText === currentPlayingText && currentPlayingText !== null) {
-      $i.removeClass("fa-volume-high").addClass("fa-circle-stop");
-      $this.css("color", "#4CAF50");
+      if (audioStreamer.isPaused) {
+        $i.removeClass("fa-volume-high fa-circle-pause").addClass("fa-circle-play");
+        $this.css("color", "#FF9800");
+      } else {
+        $i.removeClass("fa-volume-high fa-circle-play").addClass("fa-circle-pause");
+        $this.css("color", "#4CAF50");
+      }
+      $stopBtn.show();
     } else {
-      $i.removeClass("fa-circle-stop").addClass("fa-volume-high");
+      $i.removeClass("fa-circle-pause fa-circle-play").addClass("fa-volume-high");
       $this.css("color", "");
+      $stopBtn.hide();
     }
   });
 }
 function addPlayButtonToMessage(mesElement) {
   const $mes = $(mesElement);
-  if ($mes.find(".nghitts-play-btn").length > 0) return;
-  const $btn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn n\xE0y" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
-  $btn.on("mouseenter", () => $btn.css("opacity", "1"));
-  $btn.on("mouseleave", () => $btn.css("opacity", "0.6"));
-  $btn.on("click mousedown touchstart", function(e) {
+  const $existingPlayBtn = $mes.find(".nghitts-play-btn");
+  if ($existingPlayBtn.length > 0) {
+    if ($existingPlayBtn.siblings(".nghitts-stop-btn").length > 0) {
+      return;
+    } else {
+      $existingPlayBtn.remove();
+    }
+  }
+  const $btnGroup = $('<div class="nghitts-btn-group" style="display:flex; gap: 5px; align-items: center;"></div>');
+  const $playBtn = $('<div class="mes_button nghitts-play-btn" title="NghiTTS: \u0110\u1ECDc/T\u1EA1m d\u1EEBng tin nh\u1EAFn n\xE0y" style="cursor:pointer; opacity: 0.6;"><i class="fa-solid fa-volume-high"></i></div>');
+  const $stopBtn = $('<div class="mes_button nghitts-stop-btn" title="NghiTTS: H\u1EE7y \u0111\u1ECDc" style="cursor:pointer; opacity: 0.6; display: none; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
+  $playBtn.on("mouseenter", () => $playBtn.css("opacity", "1"));
+  $playBtn.on("mouseleave", () => $playBtn.css("opacity", "0.6"));
+  $stopBtn.on("mouseenter", () => $stopBtn.css("opacity", "1"));
+  $stopBtn.on("mouseleave", () => $stopBtn.css("opacity", "0.6"));
+  $playBtn.on("click mousedown touchstart", function(e) {
     if (e.type !== "click") return;
     e.preventDefault();
     e.stopPropagation();
     const text = getReadableText($mes.find(".mes_text"));
-    console.log("[NghiTTS] Play button clicked. Text length:", text.length);
     if (text) {
       playTextWithNghiTTS(text);
     }
   });
+  $stopBtn.on("click mousedown touchstart", function(e) {
+    if (e.type !== "click") return;
+    e.preventDefault();
+    e.stopPropagation();
+    stopTextWithNghiTTS();
+  });
+  $btnGroup.append($playBtn).append($stopBtn);
   const $buttons = $mes.find(".mes_buttons");
   if ($buttons.length > 0) {
-    $buttons.prepend($btn);
+    $buttons.prepend($btnGroup);
   } else {
-    $btn.css({ position: "absolute", right: "10px", top: "10px" });
-    $mes.append($btn);
+    $btnGroup.css({ position: "absolute", right: "10px", top: "10px" });
+    $mes.append($btnGroup);
   }
 }
 function injectDedicatedUI() {
@@ -2449,29 +2492,43 @@ function injectDedicatedUI() {
     const $sendControls = $("#send_controls");
     const $sendForm = $("#send_form");
     const $target = $sendControls.length > 0 ? $sendControls : $sendForm;
-    if ($target.length > 0 && $("#nghitts_quick_play").length === 0) {
-      const $btn = $('<div id="nghitts_quick_play" title="NghiTTS: \u0110\u1ECDc tin nh\u1EAFn m\u1EDBi nh\u1EA5t" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
-      $btn.on("mouseenter", () => $btn.css("opacity", "1"));
-      $btn.on("mouseleave", () => $btn.css("opacity", "0.7"));
-      $btn.on("click mousedown touchstart", (e) => {
-        if (e.type !== "click") return;
-        e.preventDefault();
-        e.stopPropagation();
-        const $lastMes = $(".mes:visible .mes_text").last();
-        if ($lastMes.length > 0) {
-          const text = getReadableText($lastMes);
-          console.log("[NghiTTS] Quick play button clicked. Text length:", text.length);
-          if (text) {
-            playTextWithNghiTTS(text);
-          }
-        }
-      });
-      if ($("#send_but").length > 0) {
-        $btn.insertBefore("#send_but");
-      } else {
-        $target.append($btn);
+    if ($target.length > 0) {
+      if ($("#nghitts_quick_play").length > 0 && $("#nghitts_quick_stop").length === 0) {
+        $("#nghitts_quick_play").remove();
       }
-      clearInterval(checkInterval);
+      if ($("#nghitts_quick_play").length === 0) {
+        const $playBtn = $('<div id="nghitts_quick_play" title="NghiTTS: \u0110\u1ECDc/T\u1EA1m d\u1EEBng tin nh\u1EAFn m\u1EDBi nh\u1EA5t" style="cursor: pointer; padding: 10px; margin: 0 5px; opacity: 0.7; font-size: 1.2em; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-volume-high"></i></div>');
+        const $stopBtn = $('<div id="nghitts_quick_stop" title="NghiTTS: H\u1EE7y \u0111\u1ECDc" style="cursor: pointer; padding: 10px; margin: 0; opacity: 0.7; font-size: 1.2em; display: none; align-items: center; justify-content: center; color: #f44336;"><i class="fa-solid fa-circle-stop"></i></div>');
+        $playBtn.on("mouseenter", () => $playBtn.css("opacity", "1"));
+        $playBtn.on("mouseleave", () => $playBtn.css("opacity", "0.7"));
+        $stopBtn.on("mouseenter", () => $stopBtn.css("opacity", "1"));
+        $stopBtn.on("mouseleave", () => $stopBtn.css("opacity", "0.7"));
+        $playBtn.on("click mousedown touchstart", (e) => {
+          if (e.type !== "click") return;
+          e.preventDefault();
+          e.stopPropagation();
+          const $lastMes = $(".mes:visible .mes_text").last();
+          if ($lastMes.length > 0) {
+            const text = getReadableText($lastMes);
+            if (text) {
+              playTextWithNghiTTS(text);
+            }
+          }
+        });
+        $stopBtn.on("click mousedown touchstart", (e) => {
+          if (e.type !== "click") return;
+          e.preventDefault();
+          e.stopPropagation();
+          stopTextWithNghiTTS();
+        });
+        if ($("#send_but").length > 0) {
+          $playBtn.insertBefore("#send_but");
+          $stopBtn.insertBefore("#send_but");
+        } else {
+          $target.append($playBtn).append($stopBtn);
+        }
+        clearInterval(checkInterval);
+      }
     }
   }, 1e3);
 }
