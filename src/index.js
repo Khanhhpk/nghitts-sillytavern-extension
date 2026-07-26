@@ -164,6 +164,11 @@ class AudioStreamer {
             }
             this.isPlaying = false;
             this.isGenerating = false;
+            
+            if (this.audioContext && this.audioContext.state === 'running') {
+                this.audioContext.suspend().catch(e => console.error(e));
+            }
+            
             if (this.resolvePromise) {
                 this.resolvePromise();
                 this.resolvePromise = null;
@@ -180,12 +185,19 @@ class AudioStreamer {
         }
         this.isPlaying = false;
         this.isGenerating = false;
+        this.isPaused = false;
+        
         for (const source of this.sourceNodes) {
             try {
                 source.stop();
             } catch (e) {}
         }
         this.sourceNodes = [];
+        
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.audioContext.suspend().catch(e => console.error(e));
+        }
+        
         if (this.resolvePromise) {
             this.resolvePromise();
             this.resolvePromise = null;
