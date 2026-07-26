@@ -31,6 +31,10 @@ class AudioStreamer {
         this.pendingChunks = new Map(); // sequenceId -> chunk data
         this.totalChunksExpected = 0;
         this.chunksCompletedCount = 0;
+        
+        // Drip-feed queue
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
     }
     
     startNewSession(resolve, taskId) {
@@ -53,6 +57,8 @@ class AudioStreamer {
         this.pendingChunks.clear();
         this.totalChunksExpected = 0;
         this.chunksCompletedCount = 0;
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
     }
 
     addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
@@ -77,7 +83,25 @@ class AudioStreamer {
         }
         
         this.chunksCompletedCount++;
+        this.inFlightChunks--;
+        
         this.flushQueue();
+        this.dispatchNextChunks();
+    }
+    
+    dispatchNextChunks() {
+        if (!this.isPlaying || !this.currentTaskId) return;
+        
+        // Always keep (poolSize + 1) chunks in flight to ensure workers never wait
+        const maxInFlight = (typeof workerPool !== 'undefined' ? workerPool.poolSize : 1) + 1;
+        
+        while (this.inFlightChunks < maxInFlight && this.unprocessedChunks.length > 0) {
+            const nextChunk = this.unprocessedChunks.shift();
+            this.inFlightChunks++;
+            if (typeof workerPool !== 'undefined') {
+                workerPool.dispatch(nextChunk);
+            }
+        }
     }
 
     flushQueue() {
@@ -186,6 +210,8 @@ class AudioStreamer {
         this.isPlaying = false;
         this.isGenerating = false;
         this.isPaused = false;
+        this.unprocessedChunks = [];
+        this.inFlightChunks = 0;
         
         for (const source of this.sourceNodes) {
             try {
@@ -847,16 +873,16 @@ async function generateTTS(text, voiceId, resolve, reject) {
         
         audioStreamer.totalChunksExpected = chunks.length;
         
-        chunks.forEach((chunkText, idx) => {
-            workerPool.dispatch({
-                type: 'generate',
-                text: chunkText,
-                voice: voiceId,
-                speed: currentSpeed,
-                taskId: taskId,
-                sequenceId: idx
-            });
-        });
+        audioStreamer.unprocessedChunks = chunks.map((chunkText, idx) => ({
+            type: 'generate',
+            text: chunkText,
+            voice: voiceId,
+            speed: currentSpeed,
+            taskId: taskId,
+            sequenceId: idx
+        }));
+        
+        audioStreamer.dispatchNextChunks();
     } catch (e) {
         console.error("Error in generateTTS:", e);
         reject(e);
