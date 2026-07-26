@@ -512,52 +512,49 @@ function initAdvancedSettingsUI() {
         const modal = document.getElementById('nghitts_payload_modal');
         if (!modal) return;
 
-        // Simulate pre-processing steps
-        let dictText = text;
-        if (nghittsDictionary && nghittsDictionary.length > 0) {
-            nghittsDictionary.forEach(item => {
-                if (item.word && item.pron) {
-                    const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
-                }
-            });
-        }
-
-        let rawChunks = [dictText];
-        if (nghittsPauses && nghittsPauses.length > 0) {
-            let tempRaw = [];
-            for (let rc of rawChunks) {
-                let tempChunk = rc;
-                nghittsPauses.forEach(p => {
-                    if (p.symbol) {
-                        const escaped = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        tempChunk = tempChunk.replace(new RegExp(escaped, 'g'), p.symbol + '||SPLIT||');
+        const lines = text.split('\n');
+        let finalChunks = [];
+        for (let idx = 0; idx < lines.length; idx++) {
+            const line = lines[idx];
+            if (!line.trim()) continue;
+            
+            // Emulate dictionary replacement
+            let dictText = line;
+            if (nghittsDictionary && nghittsDictionary.length > 0) {
+                nghittsDictionary.forEach(item => {
+                    if (item.word && item.pron) {
+                        const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        dictText = dictText.replace(new RegExp(escapedWord, 'gi'), item.pron);
                     }
                 });
-                tempRaw.push(...tempChunk.split('||SPLIT||').filter(s => s.trim().length > 0));
             }
-            rawChunks = tempRaw;
-        }
 
-        let finalChunks = [];
-        for (let rc of rawChunks) {
-            let endingPauseSymbol = null;
-            if (nghittsPauses && nghittsPauses.length > 0) {
-                for (let p of nghittsPauses) {
-                    if (p.symbol && rc.endsWith(p.symbol)) {
-                        endingPauseSymbol = p.symbol;
-                        break;
+            // Emulate the exact custom pause filtering logic from generateTTS
+            let textToProcess = dictText;
+            if (Array.isArray(nghittsPauses) && nghittsPauses.length > 0) {
+                const customPauseMatches = [];
+                for (const p of nghittsPauses) {
+                    if (!p.symbol) continue;
+                    const escapedSymbol = p.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escapedSymbol, 'g');
+                    let match;
+                    while ((match = regex.exec(dictText)) !== null) {
+                        customPauseMatches.push({ index: match.index, symbol: p.symbol });
+                    }
+                }
+                
+                if (customPauseMatches.length > 0) {
+                    customPauseMatches.sort((a, b) => a.index - b.index);
+                    const firstPause = customPauseMatches[0];
+                    const isStandardPunc = /^[.!?,:;…]+$/.test(firstPause.symbol);
+                    if (!isStandardPunc) {
+                        textToProcess = dictText.replace(firstPause.symbol, ' ');
                     }
                 }
             }
-            
-            const processed = await processTextForTTS(rc);
+
+            const processed = await processTextForTTS(textToProcess);
             const subChunks = await chunkText(processed);
-            
-            if (endingPauseSymbol && subChunks.length > 0) {
-                subChunks[subChunks.length - 1] += endingPauseSymbol;
-            }
-            
             finalChunks.push(...subChunks);
         }
 
