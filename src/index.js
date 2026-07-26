@@ -90,7 +90,7 @@ class AudioStreamer {
     }
     
     dispatchNextChunks() {
-        if (!this.isPlaying || !this.currentTaskId) return;
+        if (!this.isPlaying || !this.currentTaskId || this.isPaused) return;
         
         // Always keep (poolSize + 1) chunks in flight to ensure workers never wait
         const maxInFlight = (typeof workerPool !== 'undefined' ? workerPool.poolSize : 1) + 1;
@@ -239,6 +239,7 @@ class AudioStreamer {
         } else if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
             this.isPaused = false;
+            this.dispatchNextChunks();
         }
     }
 }
