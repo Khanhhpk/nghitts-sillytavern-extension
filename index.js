@@ -1714,6 +1714,7 @@ var AudioStreamer = class {
     this.chunksCompletedCount = 0;
     this.unprocessedChunks = [];
     this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
   }
   startNewSession(resolve, taskId) {
     this.stop();
@@ -1736,6 +1737,7 @@ var AudioStreamer = class {
     this.chunksCompletedCount = 0;
     this.unprocessedChunks = [];
     this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
   }
   addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
     if (taskId !== this.currentTaskId) return;
@@ -1762,7 +1764,7 @@ var AudioStreamer = class {
     this.dispatchNextChunks();
   }
   dispatchNextChunks() {
-    if (!this.isPlaying || !this.currentTaskId) return;
+    if (!this.isPlaying || !this.currentTaskId || this.isPaused) return;
     const maxInFlight = (typeof workerPool !== "undefined" ? workerPool.poolSize : 1) + 1;
     while (this.inFlightChunks < maxInFlight && this.unprocessedChunks.length > 0) {
       const nextChunk = this.unprocessedChunks.shift();
@@ -1779,12 +1781,17 @@ var AudioStreamer = class {
       if (!seqObj) break;
       while (seqObj.playCursor < seqObj.buffers.length) {
         const audioData = seqObj.buffers[seqObj.playCursor];
-        const isLastBuffer = seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length - 1;
-        this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
         seqObj.playCursor++;
+        const isLastBuffer = seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length;
+        this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, null);
       }
       if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
+        const pauseSec = this.pauseMap.get(this.expectedSequenceId) || 0;
+        if (pauseSec > 0) {
+          this.nextStartTime += pauseSec;
+        }
         this.pendingChunks.delete(this.expectedSequenceId);
+        this.pauseMap.delete(this.expectedSequenceId);
         this.expectedSequenceId++;
       } else {
         break;
@@ -1805,16 +1812,7 @@ var AudioStreamer = class {
     }
     source.start(scheduleTime);
     this.sourceNodes.push(source);
-    let extraPause = 0;
-    if (text) {
-      for (const p of nghittsPauses) {
-        if (text.endsWith(p.symbol)) {
-          extraPause = parseFloat(p.time) || 0;
-          break;
-        }
-      }
-    }
-    this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
+    this.nextStartTime = scheduleTime + audioBuffer.duration;
     source.onended = () => {
       const idx = this.sourceNodes.indexOf(source);
       if (idx !== -1) {
@@ -1852,6 +1850,7 @@ var AudioStreamer = class {
     this.isPaused = false;
     this.unprocessedChunks = [];
     this.inFlightChunks = 0;
+    this.pauseMap = /* @__PURE__ */ new Map();
     for (const source of this.sourceNodes) {
       try {
         source.stop();
@@ -1875,6 +1874,7 @@ var AudioStreamer = class {
     } else if (this.audioContext.state === "suspended") {
       this.audioContext.resume();
       this.isPaused = false;
+      this.dispatchNextChunks();
     }
   }
 };
@@ -2365,28 +2365,42 @@ async function generateTTS(text, voiceId, resolve, reject) {
       rawChunks = tempRaw;
     }
     let chunks = [];
+    const pauseEntries = [];
+    let chunkOffset = 0;
     for (let rc of rawChunks) {
-      let endingPauseSymbol = null;
+      let pauseSeconds = 0;
+      let textToProcess = rc;
       if (nghittsPauses && nghittsPauses.length > 0) {
         for (let p of nghittsPauses) {
           if (p.symbol && rc.endsWith(p.symbol)) {
-            endingPauseSymbol = p.symbol;
+            pauseSeconds = parseFloat(p.time) || 0;
+            textToProcess = rc.slice(0, -p.symbol.length);
             break;
           }
         }
       }
-      const processed = await processTextForTTS(rc);
+      const processed = await processTextForTTS(textToProcess);
       const subChunks = await chunkText(processed);
-      if (endingPauseSymbol && subChunks.length > 0) {
-        subChunks[subChunks.length - 1] += endingPauseSymbol;
+      if (subChunks.length === 0) {
+        if (pauseSeconds > 0 && chunks.length > 0) {
+          pauseEntries.push({ index: chunks.length - 1, seconds: pauseSeconds });
+        }
+        continue;
+      }
+      if (pauseSeconds > 0) {
+        pauseEntries.push({ index: chunkOffset + subChunks.length - 1, seconds: pauseSeconds });
       }
       chunks.push(...subChunks);
+      chunkOffset = chunks.length;
     }
     if (chunks.length === 0) {
       audioStreamer.stop();
       return;
     }
     audioStreamer.totalChunksExpected = chunks.length;
+    for (const entry of pauseEntries) {
+      audioStreamer.pauseMap.set(entry.index, entry.seconds);
+    }
     audioStreamer.unprocessedChunks = chunks.map((chunkText2, idx) => ({
       type: "generate",
       text: chunkText2,

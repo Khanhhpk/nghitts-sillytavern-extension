@@ -35,6 +35,9 @@ class AudioStreamer {
         // Drip-feed queue
         this.unprocessedChunks = [];
         this.inFlightChunks = 0;
+        
+        // Pause metadata: sequenceId -> pause seconds
+        this.pauseMap = new Map();
     }
     
     startNewSession(resolve, taskId) {
@@ -59,6 +62,7 @@ class AudioStreamer {
         this.chunksCompletedCount = 0;
         this.unprocessedChunks = [];
         this.inFlightChunks = 0;
+        this.pauseMap = new Map();
     }
 
     addChunkData(taskId, sequenceId, audioData, sampleRate, text) {
@@ -121,23 +125,19 @@ class AudioStreamer {
                 
                 // Only pass the text (which contains the custom pause symbol) if it's the final buffer
                 // This prevents duplicating extra pauses if a chunk yields multiple progressive buffers
-                this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
+                this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, null);
             }
 
             // Only advance to the next chunk if this one is fully complete and all its buffers played
             if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
-                // Apply custom pause if all buffers were already played before isComplete arrived
-                // (the common case with progressive streaming)
-                if (seqObj.text) {
-                    for (const p of nghittsPauses) {
-                        if (seqObj.text.endsWith(p.symbol)) {
-                            this.nextStartTime += (parseFloat(p.time) || 0);
-                            break;
-                        }
-                    }
+                // Apply custom pause from metadata
+                const pauseSec = this.pauseMap.get(this.expectedSequenceId) || 0;
+                if (pauseSec > 0) {
+                    this.nextStartTime += pauseSec;
                 }
                 
                 this.pendingChunks.delete(this.expectedSequenceId);
+                this.pauseMap.delete(this.expectedSequenceId);
                 this.expectedSequenceId++;
             } else {
                 break; // Still waiting for more progressive buffers of this sequenceId
@@ -169,17 +169,7 @@ class AudioStreamer {
         source.start(scheduleTime);
         this.sourceNodes.push(source);
 
-        let extraPause = 0;
-        if (text) {
-            for (const p of nghittsPauses) {
-                if (text.endsWith(p.symbol)) {
-                    extraPause = parseFloat(p.time) || 0;
-                    break;
-                }
-            }
-        }
-
-        this.nextStartTime = scheduleTime + audioBuffer.duration + extraPause;
+        this.nextStartTime = scheduleTime + audioBuffer.duration;
 
         source.onended = () => {
             const idx = this.sourceNodes.indexOf(source);
@@ -222,6 +212,7 @@ class AudioStreamer {
         this.isPaused = false;
         this.unprocessedChunks = [];
         this.inFlightChunks = 0;
+        this.pauseMap = new Map();
         
         for (const source of this.sourceNodes) {
             try {
@@ -854,27 +845,44 @@ async function generateTTS(text, voiceId, resolve, reject) {
 
         // NOW process and chunk EACH raw chunk!
         let chunks = [];
+        // Store pause metadata separately: chunkIndex -> pauseSeconds
+        const pauseEntries = [];
+        let chunkOffset = 0;
+        
         for (let rc of rawChunks) {
             // Find which custom pause this rc ends with (if any)
-            let endingPauseSymbol = null;
+            let pauseSeconds = 0;
+            let textToProcess = rc;
             if (nghittsPauses && nghittsPauses.length > 0) {
                 for (let p of nghittsPauses) {
                     if (p.symbol && rc.endsWith(p.symbol)) {
-                        endingPauseSymbol = p.symbol;
+                        pauseSeconds = parseFloat(p.time) || 0;
+                        // Strip the pause symbol BEFORE text processing
+                        textToProcess = rc.slice(0, -p.symbol.length);
                         break;
                     }
                 }
             }
             
-            const processed = await processTextForTTS(rc);
+            const processed = await processTextForTTS(textToProcess);
             const subChunks = await chunkText(processed);
             
-            // Append the original pause symbol back to the VERY LAST subChunk so AudioStreamer can see it
-            if (endingPauseSymbol && subChunks.length > 0) {
-                subChunks[subChunks.length - 1] += endingPauseSymbol;
+            // If the raw chunk was only the pause symbol (empty after stripping),
+            // apply the pause to the previous chunk instead
+            if (subChunks.length === 0) {
+                if (pauseSeconds > 0 && chunks.length > 0) {
+                    pauseEntries.push({ index: chunks.length - 1, seconds: pauseSeconds });
+                }
+                continue;
+            }
+            
+            // Tag the LAST subChunk with the pause duration
+            if (pauseSeconds > 0) {
+                pauseEntries.push({ index: chunkOffset + subChunks.length - 1, seconds: pauseSeconds });
             }
             
             chunks.push(...subChunks);
+            chunkOffset = chunks.length;
         }
         
         if (chunks.length === 0) {
@@ -883,6 +891,11 @@ async function generateTTS(text, voiceId, resolve, reject) {
         }
         
         audioStreamer.totalChunksExpected = chunks.length;
+        
+        // Store pause metadata in AudioStreamer
+        for (const entry of pauseEntries) {
+            audioStreamer.pauseMap.set(entry.index, entry.seconds);
+        }
         
         audioStreamer.unprocessedChunks = chunks.map((chunkText, idx) => ({
             type: 'generate',
