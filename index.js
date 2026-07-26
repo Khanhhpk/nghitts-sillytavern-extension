@@ -1877,7 +1877,7 @@ function updateWorkerStatusUI() {
 }
 var WorkerPool = class {
   constructor() {
-    this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 2;
+    this.poolSize = parseInt(localStorage.getItem("nghitts_worker_pool_size")) || 1;
     this.workers = [];
     this.currentWorkerIdx = 0;
     this.currentModelName = "";
