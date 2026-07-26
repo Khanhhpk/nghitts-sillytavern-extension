@@ -114,19 +114,29 @@ class AudioStreamer {
             // Play any unplayed buffers progressively
             while (seqObj.playCursor < seqObj.buffers.length) {
                 const audioData = seqObj.buffers[seqObj.playCursor];
+                seqObj.playCursor++;
                 
                 // Is this the very last buffer of the chunk?
-                const isLastBuffer = seqObj.isComplete && (seqObj.playCursor === seqObj.buffers.length - 1);
+                const isLastBuffer = seqObj.isComplete && (seqObj.playCursor === seqObj.buffers.length);
                 
                 // Only pass the text (which contains the custom pause symbol) if it's the final buffer
                 // This prevents duplicating extra pauses if a chunk yields multiple progressive buffers
                 this.playAudioData(audioData, seqObj.sampleRate, this.currentTaskId, isLastBuffer ? seqObj.text : null);
-                
-                seqObj.playCursor++;
             }
 
             // Only advance to the next chunk if this one is fully complete and all its buffers played
             if (seqObj.isComplete && seqObj.playCursor === seqObj.buffers.length) {
+                // Apply custom pause if all buffers were already played before isComplete arrived
+                // (the common case with progressive streaming)
+                if (seqObj.text) {
+                    for (const p of nghittsPauses) {
+                        if (seqObj.text.endsWith(p.symbol)) {
+                            this.nextStartTime += (parseFloat(p.time) || 0);
+                            break;
+                        }
+                    }
+                }
+                
                 this.pendingChunks.delete(this.expectedSequenceId);
                 this.expectedSequenceId++;
             } else {
